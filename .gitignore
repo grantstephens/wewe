@@ -1,0 +1,33 @@
+# Signing keys. Losing these means never being able to update the app on
+# Play again; committing them to a public repo means anyone can forge it.
+*.keystore
+*.jks
+*.p8
+*.p12
+*.mobileprovision
+
+node_modules/
+.expo/
+dist/
+web-build/
+/android/
+/ios/
+*.tsbuildinfo
+expo-env.d.ts
+.kotlin/
+*.orig.*
+.metro-health-check*
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+.DS_Store
+*.pem
+.env*.local
+
+# Local Android release builds (see .github/workflows/release.yml).
+*.apk
+*.aab
+
+# signal-server
+signal-server/node_modules/
+signal-server/dist/

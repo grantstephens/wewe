@@ -1,0 +1,57 @@
+{
+  "expo": {
+    "name": "Wewe",
+    "slug": "wewe",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1A2140"
+    },
+    "android": {
+      "package": "xyz.hub13.wewe",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png",
+        "backgroundColor": "#1A2140"
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.INTERNET"
+      ],
+      "blockedPermissions": [
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "plugins": [
+      "expo-sqlite",
+      "expo-asset",
+      "expo-system-ui",
+      "expo-camera",
+      "expo-notifications",
+      [
+        "@config-plugins/react-native-webrtc",
+        {
+          "microphonePermission": "Wewe needs the microphone to monitor for noise and crying."
+        }
+      ],
+      "expo-audio",
+      [
+        "react-native-notify-kit",
+        {
+          "android": {
+            "foregroundService": {
+              "types": ["microphone", "mediaPlayback"]
+            }
+          }
+        }
+      ]
+    ]
+  }
+}
