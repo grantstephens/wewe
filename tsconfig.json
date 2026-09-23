@@ -3,5 +3,12 @@
   "compilerOptions": {
     "strict": true,
     "types": ["jest", "node"]
-  }
+  },
+  // "exclude" isn't merged with the base config's own list when overridden
+  // here (TS inheritance replaces it wholesale, not per-entry) — this
+  // repeats expo/tsconfig.base's node_modules/android/ios excludes and adds
+  // signal-server/, an independent TypeScript project with its own
+  // tsconfig.json/dependencies (see AGENTS.md) that this app's tsc run has
+  // no business type-checking.
+  "exclude": ["node_modules", "android", "ios", "signal-server"]
 }
