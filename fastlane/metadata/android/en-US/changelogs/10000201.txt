@@ -1,0 +1,11 @@
+First beta. Phone-to-phone audio monitoring over WebRTC:
+
+* Pairing by QR code, six-digit code, or local-network discovery
+* Local noise gate on the Monitor — streams only when there's sound
+* Cry/noise alerts on the Parent phone (vibration + notification)
+* Push-to-talk
+* Custom signaling relay (self-hosted, no default baked in)
+* Foreground-service notification so the mic/socket survive the screen turning off
+
+Known gaps: no TURN fallback for CGNAT networks yet (STUN-only), and this hasn't
+been tested across two separate real-world networks yet, only local Wi-Fi.
