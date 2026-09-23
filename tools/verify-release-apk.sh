@@ -31,18 +31,33 @@ echo "targetSdkVersion=$TARGET"
 # (ContextCompat.registerReceiver()) - scoped to this app's own package,
 # unusable by any other app, invisible in Play Store's permission listing.
 #
-# This is the real permission set app.json's plugins declare as of the
-# commit this script was added (see AndroidManifest.xml after `expo
-# prebuild`): camera (QR pairing), mic + audio routing (the monitor's audio
-# capture and the two-way talk-back track), foreground-service types
-# (keeping the mic/WebRTC connection alive with the screen off), network
-# state + Bluetooth (react-native-webrtc's ICE gathering), vibrate + wake
-# lock (alert delivery). Checked by exact set, not just count, so a future
-# dependency silently adding some other permission does not slip through
-# unnoticed - if this list is genuinely out of date, update it deliberately,
-# don't just loosen the check.
+# This is the real permission set of a signed release APK's actual merged
+# manifest (aapt reads the POST-merge manifest baked into the built APK,
+# not the pre-merge source android/app/src/main/AndroidManifest.xml `expo
+# prebuild` writes — dependency AARs' own declared permissions only show up
+# after Gradle's manifest merger runs, which is why a naive `grep
+# uses-permission` against the source file undercounts this; confirmed by a
+# real CI failure the first time this script ran for real). Grouped by
+# source:
+#   - camera (QR pairing), mic + audio routing (the monitor's capture and
+#     the two-way talk-back track), foreground-service types (keeping the
+#     mic/WebRTC connection alive with the screen off), network state +
+#     Bluetooth (react-native-webrtc's ICE gathering), vibrate + wake lock
+#     (alert delivery) — this app's own declared permissions.
+#   - ACCESS_NOTIFICATION_POLICY, POST_NOTIFICATIONS, READ_APP_BADGE,
+#     RECEIVE_BOOT_COMPLETED, SCHEDULE_EXACT_ALARM, and the long tail of
+#     vendor launcher badge permissions (com.htc.launcher.*,
+#     com.huawei.android.launcher.*, com.sonyericsson.home.*, etc.) —
+#     auto-injected by expo-notifications' bundled badge-count library,
+#     which declares a uses-permission for essentially every OEM launcher's
+#     own badge API so app-icon badge counts work across vendors.
+# Checked by exact set, not just count, so a future dependency silently
+# adding some other permission does not slip through unnoticed - if this
+# list is genuinely out of date, update it deliberately, don't just loosen
+# the check.
 EXPECTED_PERMS=$(cat <<'EOF' | sort
 android.permission.ACCESS_NETWORK_STATE
+android.permission.ACCESS_NOTIFICATION_POLICY
 android.permission.BLUETOOTH
 android.permission.CAMERA
 android.permission.FOREGROUND_SERVICE
@@ -50,9 +65,30 @@ android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK
 android.permission.FOREGROUND_SERVICE_MICROPHONE
 android.permission.INTERNET
 android.permission.MODIFY_AUDIO_SETTINGS
+android.permission.POST_NOTIFICATIONS
+android.permission.READ_APP_BADGE
+android.permission.RECEIVE_BOOT_COMPLETED
 android.permission.RECORD_AUDIO
+android.permission.SCHEDULE_EXACT_ALARM
 android.permission.VIBRATE
 android.permission.WAKE_LOCK
+com.anddoes.launcher.permission.UPDATE_COUNT
+com.google.android.c2dm.permission.RECEIVE
+com.google.android.finsky.permission.BIND_GET_INSTALL_REFERRER_SERVICE
+com.htc.launcher.permission.READ_SETTINGS
+com.htc.launcher.permission.UPDATE_SHORTCUT
+com.huawei.android.launcher.permission.CHANGE_BADGE
+com.huawei.android.launcher.permission.READ_SETTINGS
+com.huawei.android.launcher.permission.WRITE_SETTINGS
+com.majeur.launcher.permission.UPDATE_BADGE
+com.oppo.launcher.permission.READ_SETTINGS
+com.oppo.launcher.permission.WRITE_SETTINGS
+com.sec.android.provider.badge.permission.READ
+com.sec.android.provider.badge.permission.WRITE
+com.sonyericsson.home.permission.BROADCAST_BADGE
+com.sonymobile.home.permission.PROVIDER_INSERT_BADGE
+me.everything.badger.permission.BADGE_COUNT_READ
+me.everything.badger.permission.BADGE_COUNT_WRITE
 EOF
 )
 PERM_LIST=$(aapt dump permissions "$APK" | grep 'uses-permission' \
