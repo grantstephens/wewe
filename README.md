@@ -70,6 +70,69 @@ npm run dev
 
 Then set the Settings screen's relay URL to `ws://<your-machine-ip>:8787`.
 
+In production, self-host it as a container: `signal-server/Dockerfile` builds a small
+image (`docker build -t wewe-signal-server signal-server/`), and
+[`.github/workflows/docker.yml`](.github/workflows/docker.yml) publishes one to
+`ghcr.io/grantstephens/wewe-signal-server` on every push to `main` and on tags. Run it
+behind a reverse proxy that terminates TLS so the app can use `wss://` — see
+[`signal-server/README.md`](signal-server/README.md) for the wire protocol and hardening
+knobs (room TTL, per-IP rate limiting).
+
+### Releasing
+
+Pushing a `v*` tag (e.g. `v1.0.0`) triggers
+[`.github/workflows/release.yml`](.github/workflows/release.yml), which builds a signed
+APK and AAB and attaches them to a GitHub Release. `versionCode` is packed from the tag
+itself (see [`tools/compute-version.sh`](tools/compute-version.sh) for the exact scheme),
+so rebuilding a tag always reproduces the same value.
+
+Before tagging, write the release notes to a file and run
+`make prepare-release TAG=v1.0.1 CHANGELOG=path/to/notes.txt`. It computes the version and
+commits it into `fdroid-version.txt`, so F-Droid's `checkupdates` (which can't do the
+packing arithmetic itself) has a real, regex-extractable versionCode to read at that tag —
+and it copies your notes into
+`fastlane/metadata/android/en-US/changelogs/<versionCode>.txt`. Then tag and push as the
+command's own output says:
+
+```bash
+make prepare-release TAG=v1.0.1 CHANGELOG=path/to/notes.txt
+git tag v1.0.1
+git push origin main v1.0.1
+```
+
+`fdroid/xyz.hub13.wewe.yml` is a draft F-Droid recipe, not yet submitted — see the TODOs
+at its top for what has to happen first (a real tagged release to point `Builds:` at, and
+a verified from-source build, since this hasn't been tried against F-Droid's own build
+infrastructure yet).
+
+#### Signing setup
+
+Android identifies an app by its signing certificate — every release must use the *same*
+key, or existing users cannot upgrade and would have to uninstall, losing their paired
+monitors and activity log. Generate it once, back it up somewhere you trust, and never
+commit it:
+
+```bash
+keytool -genkeypair -v -keystore wewe.keystore -storetype PKCS12 \
+        -alias wewe -keyalg RSA -keysize 4096 -validity 10000
+```
+
+Then set four repository secrets:
+
+| Secret | Value |
+|---|---|
+| `ANDROID_KEYSTORE_BASE64` | base64 of the `.keystore` file |
+| `ANDROID_KEYSTORE_PASSWORD` | keystore password |
+| `ANDROID_KEY_ALIAS` | key alias (`wewe` above) |
+| `ANDROID_KEY_PASSWORD` | key password |
+
+```bash
+base64 -w0 wewe.keystore | gh secret set ANDROID_KEYSTORE_BASE64
+gh secret set ANDROID_KEYSTORE_PASSWORD
+gh secret set ANDROID_KEY_ALIAS
+gh secret set ANDROID_KEY_PASSWORD
+```
+
 ## Your data
 
 Paired monitors and the activity log live in the app's private SQLite database on the
@@ -84,10 +147,9 @@ Phone-to-phone monitoring is implemented and covered by the automated test suite
 cry/connection-loss alerts, activity log, push-to-talk, custom relay settings, a
 hardened signal-server (room TTL + per-IP rate limiting), signaling reconnect with
 exponential backoff, and an Android foreground-service notification so the mic/socket
-survive the screen turning off. The foreground service is implemented per its library's
-documented API and confirmed via `expo prebuild`'s generated manifest, but **not yet
-verified on a physical device** — that verification, plus real cross-NAT testing, is
-the immediate next step (see `PLAN.md`).
+survive the screen turning off, verified on a physical device (Pixel 9, Android 16).
+Real cross-NAT testing (two separate networks, not just LAN) is the immediate next
+step (see `PLAN.md`).
 
 Still ahead: the ESP32-S3 firmware (a standalone ESP-IDF application using Espressif's
 `esp-webrtc-solution` — not an ESPHome YAML config, since ESPHome has no on-device

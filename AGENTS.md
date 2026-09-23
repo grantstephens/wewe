@@ -109,17 +109,23 @@ Layered, dependencies pointing inward, same convention as DriveWell.
   Notifee's own docs. `registerForegroundServiceRunner()` is called once in `index.ts`,
   outside any component, before anything can call `startForegroundSession()` — this is
   the library's own documented requirement, not a style choice.
-- **Foreground-service behavior is implemented per the library's documented API and
-  verified only via `expo prebuild` (the manifest gets the right
-  `<service android:foregroundServiceType="microphone|connectedDevice">` and
-  `FOREGROUND_SERVICE*` permissions — confirmed by inspecting the generated
-  `android/app/src/main/AndroidManifest.xml`), not on a real device.** Whether it
-  actually keeps the mic/socket alive with the screen off, and whether Android 14's
-  microphone-type enforcement is satisfied by Parent's occasional push-to-talk use
-  rather than continuous recording, needs verification on a physical device before
-  this is trusted. If it doesn't hold up, the fix is almost certainly in
-  `src/platform/foregroundService.ts`'s `types` arguments or notification config, not
-  a rewrite.
+- **Foreground-service startup is verified on a real device (Pixel 9, Android 16) —
+  do not use `FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE`.** Parent's session used to
+  request `[CONNECTED_DEVICE, MICROPHONE]`; on real hardware that crashed immediately
+  with `SecurityException: Starting FGS with type connectedDevice ... requires
+  permissions [FOREGROUND_SERVICE_CONNECTED_DEVICE] and any of [BLUETOOTH_*, NFC,
+  ...]` — `CONNECTED_DEVICE` is for apps managing a physical Bluetooth/USB/NFC
+  accessory, not a WebRTC peer connection, and this app declares none of those
+  permissions on purpose. Fixed to `[MEDIA_PLAYBACK, MICROPHONE]` (Parent is playing
+  received audio in the background; Monitor's own `MICROPHONE`-only type was already
+  correct). The `types` array passed at each `startForegroundSession()` call site and
+  `app.json`'s `react-native-notify-kit` plugin config (`android.foregroundService.types`,
+  which the generated manifest's `<service foregroundServiceType="...">` is derived
+  from) must be changed together — the plugin config needs a fresh `expo prebuild` to
+  take effect, a JS-only edit won't. Still **not** verified: whether the session
+  survives extended screen-off backgrounding, or holds up under Android 14+'s
+  microphone-type enforcement over a long push-to-talk session rather than a short
+  test — only confirmed it starts without crashing and stays foregrounded briefly.
 
 ### Testing gotchas specific to this stack
 

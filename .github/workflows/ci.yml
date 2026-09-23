@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: ['main']
+  pull_request:
+
+jobs:
+  check:
+    name: tsc + jest (app)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          # Matches the pin in mise.toml — keep both in sync if you bump one.
+          node-version: '24.16.0'
+          cache: npm
+      - run: npm ci --legacy-peer-deps
+      - run: npm run check
+
+  signal-server:
+    name: tsc + jest (signal-server)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: signal-server
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.16.0'
+          cache: npm
+          cache-dependency-path: signal-server/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test

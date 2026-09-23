@@ -1,0 +1,182 @@
+# Builds a signed APK and AAB on tag push and attaches them to a GitHub
+# Release, which is what Obtainium (and F-Droid's `binary:` reference, once
+# that's wired up — see fdroid/xyz.hub13.wewe.yml) watches.
+#
+# Required repository secrets (see README.md "Signing setup" for how to
+# generate the keystore and set these):
+#   ANDROID_KEYSTORE_BASE64  - base64 of your .keystore file
+#   ANDROID_KEYSTORE_PASSWORD
+#   ANDROID_KEY_ALIAS
+#   ANDROID_KEY_PASSWORD
+#
+# Deliberately simpler than ReminDiary's release.yml: this does not (yet)
+# attempt a byte-reproducible build matching F-Droid's own buildserver
+# exactly (matching JDK/Node/NDK versions, absolute build paths, per-ABI
+# splits with signature-transplant verification). That took ReminDiary
+# several rounds of iteration against a real fdroiddata CI run to get
+# right, and wewe pulls in extra native surface (react-native-webrtc,
+# react-native-zeroconf) ReminDiary doesn't have, so blindly copying that
+# machinery here would be unverified guessing. Once wewe has a real tagged
+# release and an actual fdroiddata submission to iterate against, add that
+# hardening the same way ReminDiary did (see its release.yml and
+# fdroid/xyz.hub13.remindiary.yml for the full annotated history).
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build (must already exist)'
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  BUNDLETOOL_VERSION: '1.18.3'
+
+jobs:
+  check:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.16.0'
+          cache: npm
+      - run: npm ci --legacy-peer-deps
+      - run: npm run check
+
+  release:
+    name: Signed APK and AAB
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref_name }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.16.0'
+          cache: npm
+      - run: npm ci --legacy-peer-deps
+
+      # Matches RN's own gradle-plugin's hardcoded jvmToolchain(17) — no
+      # patch needed here, unlike a workflow chasing a different JDK to
+      # match some other build environment exactly.
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # versionCode is a packed integer, not just the tag — see
+      # tools/compute-version.sh for the scheme and why. That script is the
+      # single source of truth for this arithmetic, shared with
+      # `make prepare-release`, which commits its output into
+      # fdroid-version.txt before tagging so F-Droid's checkupdates can read
+      # a real versionCode without needing arithmetic of its own.
+      - name: Derive version
+        id: version
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          eval "$(tools/compute-version.sh "$TAG")"
+          echo "tag=$TAG"           >> "$GITHUB_OUTPUT"
+          echo "name=$versionName"  >> "$GITHUB_OUTPUT"
+          echo "code=$versionCode"  >> "$GITHUB_OUTPUT"
+          echo "Building $TAG as versionName=$versionName versionCode=$versionCode"
+
+      # expo prebuild bakes app.json's version/android.versionCode straight
+      # into the generated build.gradle and AndroidManifest.xml.
+      - name: Set app.json version
+        run: |
+          sed -i -e "/\"version\"/s/1.0.0/${{ steps.version.outputs.name }}/" \
+            -e "/\"android\":\ {/a \"versionCode\":${{ steps.version.outputs.code }}," \
+            app.json
+
+      - name: Prebuild the native Android project
+        run: npx expo prebuild --platform android --no-install
+
+      # expo prebuild's generated build.gradle signs the "release" build
+      # type with the debug keystore by default — its own comment says as
+      # much: "Caution! In production, you need to generate your own
+      # keystore file." expo prebuild regenerates android/ from scratch
+      # every run (Continuous Native Generation), so this has to be patched
+      # here rather than hand-edited once. Anchored on the exact text of the
+      # current Expo template; asserts both anchors are found exactly once,
+      # so a future template change fails the build loudly instead of
+      # quietly shipping a debug-signed "release" APK.
+      - name: Patch release signing config
+        run: python3 tools/patch-release-signing.py
+
+      - name: Decode keystore
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KS_B64" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 is not set. See README.md 'Signing setup'."
+            exit 1
+          fi
+          printf '%s' "$KS_B64" | base64 -d > "$RUNNER_TEMP/keystore.jks"
+
+      - name: Build signed AAB
+        env:
+          RELEASE_STORE_FILE: ${{ runner.temp }}/keystore.jks
+          RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        working-directory: android
+        run: ./gradlew bundleRelease
+
+      # Obtainium installs APKs, not bundles; bundletool flattens the AAB
+      # into one universal APK covering every ABI, signed with the same key.
+      - name: Build universal APK
+        env:
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.bundletool"
+          curl -fsSL -o "$HOME/.bundletool/bundletool.jar" \
+            "https://github.com/google/bundletool/releases/download/${BUNDLETOOL_VERSION}/bundletool-all-${BUNDLETOOL_VERSION}.jar"
+          java -jar "$HOME/.bundletool/bundletool.jar" build-apks \
+            --bundle=android/app/build/outputs/bundle/release/app-release.aab \
+            --output="$RUNNER_TEMP/app.apks" \
+            --mode=universal \
+            --ks="$RUNNER_TEMP/keystore.jks" \
+            --ks-pass="pass:$KS_PASS" \
+            --ks-key-alias="$KEY_ALIAS" \
+            --key-pass="pass:$KEY_PASS"
+          unzip -p "$RUNNER_TEMP/app.apks" universal.apk \
+            > "wewe-${{ steps.version.outputs.tag }}.apk"
+          cp android/app/build/outputs/bundle/release/app-release.aab \
+            "wewe-${{ steps.version.outputs.tag }}.aab"
+
+      # Assertions, not just output: a silent regression here ships a
+      # broken, over-permissioned, or wrongly-signed build to everyone.
+      - name: Verify universal APK
+        env:
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          BUILD_TOOLS=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          echo "$BUILD_TOOLS" >> "$GITHUB_PATH"
+          export PATH="$BUILD_TOOLS:$PATH"
+          tools/verify-release-apk.sh \
+            "wewe-${{ steps.version.outputs.tag }}.apk" \
+            "${{ steps.version.outputs.code }}"
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          files: |
+            wewe-${{ steps.version.outputs.tag }}.apk
+            wewe-${{ steps.version.outputs.tag }}.aab
+          generate_release_notes: true
+          prerelease: ${{ contains(steps.version.outputs.tag, '-') }}
