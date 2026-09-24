@@ -1,7 +1,7 @@
-# Builds and (on main/tags, not PRs) publishes the signal-server image to
-# GHCR. Uses the repo's own built-in GITHUB_TOKEN — no extra secret needed,
-# unlike release.yml's signing secrets.
-name: Docker (signal-server)
+# Builds and (on main/tags, not PRs) publishes each service's image to GHCR.
+# Uses the repo's own built-in GITHUB_TOKEN — no extra secret needed, unlike
+# release.yml's signing secrets.
+name: Docker images
 
 on:
   push:
@@ -9,14 +9,13 @@ on:
     tags: ['v*']
     paths:
       - 'signal-server/**'
+      - 'site/**'
       - '.github/workflows/docker.yml'
   pull_request:
     paths:
       - 'signal-server/**'
+      - 'site/**'
       - '.github/workflows/docker.yml'
-
-env:
-  IMAGE: ghcr.io/${{ github.repository_owner }}/wewe-signal-server
 
 jobs:
   build:
@@ -24,6 +23,13 @@ jobs:
     permissions:
       contents: read
       packages: write
+    strategy:
+      matrix:
+        include:
+          - context: signal-server
+            image: wewe-signal-server
+          - context: site
+            image: wewe-site
     steps:
       - uses: actions/checkout@v7
 
@@ -40,7 +46,7 @@ jobs:
       - id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.IMAGE }}
+          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=branch
@@ -51,7 +57,7 @@ jobs:
       # no registry credentials are available on a fork's pull_request event.
       - uses: docker/build-push-action@v6
         with:
-          context: signal-server
+          context: ${{ matrix.context }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

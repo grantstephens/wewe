@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy — Wewe</title>
+<meta name="description" content="Wewe's privacy policy: what the signaling relay sees, what it never sees, and how audio actually flows between your phones.">
+<style>
+  :root {
+    --bg: #ffffff;
+    --surface: #f2f2f2;
+    --text: #1c1c1e;
+    --text-muted: #6e6e73;
+    --accent: #0a84ff;
+    --border: #d1d1d6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121212;
+      --surface: #1e1e1e;
+      --text: #e5e5e7;
+      --text-muted: #9b9ba1;
+      --accent: #0a84ff;
+      --border: #2c2c2e;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+  }
+  a { color: var(--accent); }
+  main {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 56px 24px 80px;
+  }
+  header { margin-bottom: 40px; }
+  header a.back {
+    display: inline-block;
+    margin-bottom: 24px;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    text-decoration: none;
+  }
+  h1 { margin: 0 0 8px; letter-spacing: -0.02em; }
+  .updated { color: var(--text-muted); font-size: 0.9rem; }
+  .summary {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 22px;
+    margin: 32px 0;
+  }
+  .summary p { margin: 0; }
+  h2 {
+    font-size: 1.15rem;
+    margin: 40px 0 12px;
+  }
+  ul { padding-left: 1.2em; }
+  li { margin-bottom: 6px; }
+  code {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 0.9em;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+  }
+  th, td {
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.95rem;
+    vertical-align: top;
+  }
+  th { color: var(--text-muted); font-weight: 600; }
+  footer {
+    margin-top: 56px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 0.9rem;
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <a class="back" href="/">&larr; Wewe</a>
+    <h1>Privacy Policy</h1>
+    <p class="updated">Last updated 2026-09-24</p>
+  </header>
+
+  <div class="summary">
+    <p>
+      Audio flows directly between the Monitor and Parent phones, encrypted
+      end-to-end by WebRTC's own DTLS-SRTP. This site's signaling relay only
+      ever helps the two phones find each other — it forwards small JSON
+      call-setup messages, never audio, and keeps no record of who paired
+      with whom beyond a few minutes. There is no account, no cloud storage,
+      and no analytics anywhere in the app.
+    </p>
+  </div>
+
+  <h2>What the signaling relay sees</h2>
+  <p>
+    When you pair two phones, each connects to the signaling relay
+    (<code>wss://wewe.hub13.xyz</code> by default) and joins a "room" named
+    after the six-digit pairing code. The relay's only job is forwarding
+    WebRTC session-setup messages (SDP offers/answers, ICE candidates)
+    between the two phones in that room so they can establish a direct
+    connection. Once that connection is up, audio flows peer-to-peer — the
+    relay is no longer involved and never sees or stores it.
+  </p>
+  <p>
+    The relay keeps no database and no long-term logs of pairings. A room
+    that never gets a second peer is discarded after five minutes, and
+    connection attempts from a single address are rate-limited — both
+    purely to stop someone from squatting on or guessing pairing codes, not
+    to retain data. See the
+    <a href="https://github.com/grantstephens/wewe/blob/main/signal-server/README.md">signal-server source</a>
+    for the exact wire protocol.
+  </p>
+
+  <h2>Using your own relay instead</h2>
+  <p>
+    The default relay is a convenience, not a requirement. The Settings
+    screen in the app lets you point at your own self-hosted instance (see
+    the source repository for how) or one someone else you trust runs —
+    both phones just need to agree on the same relay to pair.
+  </p>
+
+  <h2>What stays on your device</h2>
+  <p>
+    Paired monitors and the activity log (when a cry/noise alert fired, when
+    a connection dropped) are stored in a local database on your phone and
+    never transmitted anywhere. Uninstalling the app deletes them.
+  </p>
+
+  <h2>Permissions</h2>
+  <table>
+    <tr><th>Permission</th><th>What it's for</th></tr>
+    <tr>
+      <td>Camera</td>
+      <td>Scanning a monitor's QR code to pair. Never used for anything
+        else, and no image is ever stored or transmitted.</td>
+    </tr>
+    <tr>
+      <td>Microphone</td>
+      <td>The Monitor's live audio capture, and the Parent's push-to-talk.
+        Streamed live over the encrypted peer connection only — never
+        written to disk.</td>
+    </tr>
+    <tr>
+      <td>Foreground service, wake lock, notifications</td>
+      <td>Keeping the microphone and connection alive while the screen is
+        off, and showing that persistent "Wewe is monitoring" notification
+        — not for anything in the background you can't see.</td>
+    </tr>
+  </table>
+
+  <h2>Changes to this policy</h2>
+  <p>
+    If what the app or relay does ever changes, this page changes with it.
+    The source for the app, the relay, and this site is public — see
+    <a href="https://github.com/grantstephens/wewe">the repository</a> for
+    the exact code.
+  </p>
+
+  <footer>
+    Questions or concerns: open an issue on
+    <a href="https://github.com/grantstephens/wewe/issues">GitHub</a>.
+  </footer>
+</main>
+</body>
+</html>

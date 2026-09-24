@@ -1,5 +1,5 @@
 import React from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { Linking, ScrollView, StyleSheet, View } from 'react-native';
 import { Button, HelperText, Text, TextInput, useTheme } from 'react-native-paper';
 
 import { DEFAULT_SIGNALING_SERVER_URL, SETTINGS_KEYS } from '../domain/store';
@@ -38,8 +38,11 @@ export function SettingsScreen() {
       </Text>
       <Text variant="bodyMedium" style={styles.help}>
         Wewe has no server of its own beyond this: a small relay that only ever forwards call
-        setup, never audio. Run your own (see signal-server/README.md) or point at one you
-        trust.
+        setup, never audio. A default is provided so this works out of the box — run your own
+        instead, or point at one you trust.{' '}
+        <Text style={{ color: theme.colors.primary }} onPress={() => Linking.openURL('https://wewe.hub13.xyz/privacy/')}>
+          Read more about what it can see.
+        </Text>
       </Text>
       <TextInput
         label="Relay URL"
