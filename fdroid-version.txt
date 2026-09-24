@@ -1,2 +1,2 @@
-versionName=1.0.0-beta.4
-versionCode=10000204
+versionName=1.0.0-beta.5
+versionCode=10000205

@@ -1,0 +1,6 @@
+* Fixed the default signaling relay: moved to wewe-api.hub13.xyz (a single-level
+  subdomain, working with the existing wildcard certificate — the previous
+  api.wewe.hub13.xyz default was unreachable over TLS).
+
+This is the first beta where default (no-setup) pairing should actually work
+end-to-end.
