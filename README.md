@@ -59,7 +59,7 @@ needs `expo prebuild` and a dev client, not Expo Go. `npx expo run:android` afte
 
 ### Signaling server
 
-The app defaults to `wss://wewe.hub13.xyz`, an instance the project maintainer runs —
+The app defaults to `wss://api.wewe.hub13.xyz`, an instance the project maintainer runs —
 see [`signal-server/README.md`](signal-server/README.md) for the wire protocol. Nothing
 requires using it: the Settings screen persists an explicit override that always wins.
 Run your own locally for development:
@@ -82,6 +82,15 @@ commented-out Traefik/Caddy label examples; if your proxy runs on a different
 host/container, make sure it's actually reachable at that port, not just `localhost`).
 See [`signal-server/README.md`](signal-server/README.md)
 for the wire protocol and hardening knobs (room TTL, per-IP rate limiting).
+
+### Site
+
+`site/` is a small static marketing/privacy-policy site (`site/index.html`,
+`site/privacy/index.html`) deployed to Cloudflare Pages at `wewe.hub13.xyz` — kept
+deliberately separate from `api.wewe.hub13.xyz` (the signaling relay above), since
+they're different kinds of thing serving different audiences. No build step, no Docker
+image; push the `site/` directory to Cloudflare Pages directly (dashboard Git
+integration, or `wrangler pages deploy site`).
 
 ### Releasing
 

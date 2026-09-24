@@ -67,7 +67,8 @@ Layered, dependencies pointing inward, same convention as DriveWell.
 | `src/storage` | `SqliteStore` (via `expo-sqlite`/`node:sqlite`), held to `storeContract.ts`'s behavioural contract. |
 | `src/screens` | Home, Monitor, Parent, AddMonitor, Settings. |
 | `src/theme.ts` | MD3 theme via `@material/material-color-utilities`, same pattern as DriveWell — seed color is the app icon's night-navy, not a leaf green. |
-| `signal-server/` | Independent Node/TypeScript project (own `package.json`/`tsconfig.json`/`jest.config.js`) — a stateless WebSocket relay. See its own README for the wire protocol. |
+| `signal-server/` | Independent Node/TypeScript project (own `package.json`/`tsconfig.json`/`jest.config.js`) — a stateless WebSocket relay. See its own README for the wire protocol. Deployed at `api.wewe.hub13.xyz`, deliberately a different (sub)domain from `site/`'s. |
+| `site/` | Static marketing/privacy-policy pages, no build step. Deployed to Cloudflare Pages at `wewe.hub13.xyz` — not part of `make check`/CI, no Docker image; pushed independently (dashboard Git integration or `wrangler pages deploy site`). |
 
 ### Invariants worth not breaking
 
@@ -88,7 +89,7 @@ Layered, dependencies pointing inward, same convention as DriveWell.
   track. Don't reintroduce a "the offerer is always X" assumption in either session.
 - **The signaling relay has a convenience default, not a hard requirement.**
   `SETTINGS_KEYS.signalingServerUrl` falls back to `DEFAULT_SIGNALING_SERVER_URL`
-  (`src/domain/store.ts`, currently `wss://wewe.hub13.xyz`, an instance the project
+  (`src/domain/store.ts`, currently `wss://api.wewe.hub13.xyz`, an instance the project
   maintainer runs) at every read site when unset, so the app works out of the box —
   but Settings still persists an explicit override that always wins. This reverses an
   earlier decision (see git history / PLAN.md's open items) to have no default at all;
