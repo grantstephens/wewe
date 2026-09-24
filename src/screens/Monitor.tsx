@@ -34,7 +34,7 @@ function levelToFraction(levelDb: number): number {
 export function MonitorScreen({ navigation }: Props) {
   const theme = useTheme();
   const { store } = useWewe();
-  const { levelDb, isReady } = useMicLevel();
+  const { levelDb, isReady, isRecording } = useMicLevel();
 
   const [pairingCode] = React.useState(() => generatePairingCode());
   // undefined: getSetting hasn't resolved yet — kept distinguishable from an
@@ -66,11 +66,7 @@ export function MonitorScreen({ navigation }: Props) {
     );
     sessionRef.current = session;
     session.start().catch(() => setConnectionState('failed'));
-
     advertiserRef.current.publish(pairingCode, pairingCode);
-    startForegroundSession('Wewe is monitoring', 'Listening for noise and crying', [
-      AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_MICROPHONE,
-    ]).catch(() => {});
 
     return () => {
       session.stop();
@@ -85,6 +81,25 @@ export function MonitorScreen({ navigation }: Props) {
     setGateOpen(open);
     sessionRef.current?.setGateOpen(open);
   }, [levelDb]);
+
+  // Deliberately not started alongside the session/advertiser above: Android
+  // 14+ rejects a MICROPHONE-type foreground service unless the app is
+  // actually recording at that exact instant (AppOpsManager's live state,
+  // not just the permission grant), and useMicLevel's own permission
+  // request + recorder.record() resolve on an independent, unordered
+  // effect — confirmed by two real crashes on real devices (a
+  // SecurityException "the app must be in the eligible state/exemptions",
+  // and a ForegroundServiceDidNotStartInTimeException when the permission
+  // dialog itself ate into the 5s startForeground() SLA). Gates on
+  // `isRecording`, not `isReady`/`canRecord` — canRecord means "prepared",
+  // true before record() actually starts (see useMicLevel's doc comment);
+  // gating on that would reproduce the same race one level down.
+  React.useEffect(() => {
+    if (!isRecording) return;
+    startForegroundSession('Wewe is monitoring', 'Listening for noise and crying', [
+      AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_MICROPHONE,
+    ]).catch(() => {});
+  }, [isRecording]);
 
   if (relayUrl === undefined) {
     return (

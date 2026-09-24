@@ -14,8 +14,20 @@ import { useEffect } from 'react';
  * `isMeteringEnabled: true` — see expo/expo#37241); `levelDb` surfaces as
  * `null` in that case, and callers (the NoiseGate wiring) fall back to
  * treating the gate as permanently open rather than silently never gating.
+ *
+ * `isReady` (expo-audio's `canRecord`, which maps to the native recorder's
+ * `isPrepared`) means "permission granted and the recorder object is set
+ * up" — true before `record()` has actually been told to start, let alone
+ * before the OS considers the app to be actively recording. Don't use it to
+ * gate anything that needs *genuine* live-recording state (e.g. a
+ * MICROPHONE-type foreground service, which Android 14+ checks against
+ * AppOpsManager's real recording state, not just this) — use `isRecording`
+ * for that instead. Caught by reading expo-audio's own native source
+ * (`AudioRecorder.kt`: `canRecord` is literally `isPrepared`) while fixing
+ * the Monitor screen's foreground-service crash — gating on `isReady` there
+ * would have reproduced the same class of bug one level down.
  */
-export function useMicLevel(): { levelDb: number | null; isReady: boolean } {
+export function useMicLevel(): { levelDb: number | null; isReady: boolean; isRecording: boolean } {
   const recorder = useAudioRecorder({ ...RecordingPresets.LOW_QUALITY, isMeteringEnabled: true });
   const state = useAudioRecorderState(recorder, 200);
 
@@ -36,5 +48,5 @@ export function useMicLevel(): { levelDb: number | null; isReady: boolean } {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return { levelDb: state.metering ?? null, isReady: state.canRecord };
+  return { levelDb: state.metering ?? null, isReady: state.canRecord, isRecording: state.isRecording };
 }

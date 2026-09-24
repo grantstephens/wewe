@@ -141,8 +141,20 @@ Layered, dependencies pointing inward, same convention as DriveWell.
   `startTalking()` resolves (mic genuinely active by then) and downgrades back to
   `[MEDIA_PLAYBACK]` on `stopTalking()`. Don't add `MICROPHONE` to any
   `startForegroundSession()` call that isn't immediately preceded by an awaited,
-  resolved mic-capture start — this is the same class of bug, not a one-off. Still
-  **not** verified: whether the session survives extended screen-off backgrounding.
+  resolved mic-capture start — this is the same class of bug, not a one-off, and it
+  recurred: Monitor's own `startForegroundSession(..., [MICROPHONE])` had the identical
+  problem (fired in an effect unordered relative to `useMicLevel`'s own permission
+  request), crashing two different ways on two different real devices (the same
+  eligibility `SecurityException`, and separately a
+  `ForegroundServiceDidNotStartInTimeException` when the permission dialog itself ate
+  into the 5s `startForeground()` SLA). Fixed the same way: gated on a "genuinely
+  recording now" boolean via its own effect. **When doing this gating, use
+  `isRecording`, not expo-audio's `canRecord`/`useMicLevel`'s `isReady`** — `canRecord`
+  is literally the native recorder's `isPrepared` (confirmed in
+  `node_modules/expo-audio/android/.../AudioRecorder.kt`), true before `record()` has
+  actually started, which reproduces this exact bug one level down; `isRecording` is
+  the real signal. Still **not** verified: whether either session survives extended
+  screen-off backgrounding.
 
 ### Testing gotchas specific to this stack
 
