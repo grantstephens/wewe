@@ -19,7 +19,11 @@ export interface WireIceCandidate {
   sdpMid?: string | null;
 }
 
-export type SignalPayload = { sdp: WireSdp } | { candidate: WireIceCandidate };
+export type SignalPayload =
+  | { sdp: WireSdp }
+  | { candidate: WireIceCandidate }
+  | { rejected: true; reason: string }
+  | { inviteMode: 'open' | 'closed' };
 
 /** True iff `payload` is the SDP half of a SignalPayload. */
 export function isSdpSignal(payload: unknown): payload is { sdp: WireSdp } {
@@ -29,6 +33,16 @@ export function isSdpSignal(payload: unknown): payload is { sdp: WireSdp } {
 /** True iff `payload` is the ICE-candidate half of a SignalPayload. */
 export function isCandidateSignal(payload: unknown): payload is { candidate: WireIceCandidate } {
   return typeof payload === 'object' && payload !== null && 'candidate' in payload;
+}
+
+/** True iff `payload` is a Monitor's "you're not authorized" rejection, sent to a Parent whose deviceId isn't authorized and invite mode isn't open. */
+export function isRejectedSignal(payload: unknown): payload is { rejected: true; reason: string } {
+  return typeof payload === 'object' && payload !== null && 'rejected' in payload;
+}
+
+/** True iff `payload` is a Parent's request to open/close the Monitor's invite mode on its behalf — only honored by MonitorSession from an already-connected (thus already-authorized) sender. */
+export function isInviteModeSignal(payload: unknown): payload is { inviteMode: 'open' | 'closed' } {
+  return typeof payload === 'object' && payload !== null && 'inviteMode' in payload;
 }
 
 /**
