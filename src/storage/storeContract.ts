@@ -122,5 +122,25 @@ export function runStoreContract(name: string, newStore: () => Promise<Store>): 
       await store.setSetting('relayUrl', 'wss://relay.example.com');
       await expect(store.getSetting('noiseGateSensitivity')).resolves.toBeNull();
     });
+
+    test('isListenerAuthorized is false for a never-authorized deviceId', async () => {
+      await expect(store.isListenerAuthorized('dev-1')).resolves.toBe(false);
+    });
+
+    test('authorizeListener then isListenerAuthorized round-trips true', async () => {
+      await store.authorizeListener('dev-1');
+      await expect(store.isListenerAuthorized('dev-1')).resolves.toBe(true);
+    });
+
+    test('authorizeListener is idempotent — calling it twice is not an error', async () => {
+      await store.authorizeListener('dev-1');
+      await expect(store.authorizeListener('dev-1')).resolves.toBeUndefined();
+      await expect(store.isListenerAuthorized('dev-1')).resolves.toBe(true);
+    });
+
+    test('authorization is independent per deviceId', async () => {
+      await store.authorizeListener('dev-1');
+      await expect(store.isListenerAuthorized('dev-2')).resolves.toBe(false);
+    });
   });
 }

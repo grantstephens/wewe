@@ -38,6 +38,12 @@ export interface Store {
   /** setSetting persists an app setting, replacing any existing value. */
   setSetting(key: string, value: string): Promise<void>;
 
+  /** isListenerAuthorized returns true iff this deviceId has previously been let in (see authorizeListener). Global to this installation — a device only ever monitors as itself, so there's no "which monitor" to scope it to. */
+  isListenerAuthorized(deviceId: string): Promise<boolean>;
+
+  /** authorizeListener remembers a deviceId as authorized. Calling it again for an already-authorized deviceId is not an error. */
+  authorizeListener(deviceId: string): Promise<void>;
+
   /** close releases the underlying resources. */
   close(): Promise<void>;
 }

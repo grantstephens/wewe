@@ -1,5 +1,6 @@
 import type { ActivityEvent } from '../domain/activityLog';
 import type { PairedMonitor, Store } from '../domain/store';
+import { formatTimestamp } from '../domain/timestamp';
 import type { SqlDatabase } from './sql';
 
 const MONITOR_COLUMNS = 'id, label, lastPairingCode, addedAt';
@@ -74,6 +75,10 @@ export class SqliteStore implements Store {
         key   TEXT PRIMARY KEY NOT NULL,
         value TEXT NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS authorized_listeners (
+        deviceId TEXT PRIMARY KEY NOT NULL,
+        addedAt  TEXT NOT NULL
+      );
     `);
     return new SqliteStore(db);
   }
@@ -119,6 +124,24 @@ export class SqliteStore implements Store {
     await this.db.run(
       'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
       [key, value],
+    );
+  }
+
+  async isListenerAuthorized(deviceId: string): Promise<boolean> {
+    const rows = await this.db.all<{ deviceId: string }>('SELECT deviceId FROM authorized_listeners WHERE deviceId = ?', [
+      deviceId,
+    ]);
+    return rows.length > 0;
+  }
+
+  async authorizeListener(deviceId: string): Promise<void> {
+    // addedAt is diagnostic-only (never surfaced in the UI today), so it's
+    // computed here rather than threaded through every call site — unlike
+    // addMonitor/appendEvent's addedAt/occurredAt, which are
+    // domain-meaningful and always caller-supplied.
+    await this.db.run(
+      'INSERT INTO authorized_listeners (deviceId, addedAt) VALUES (?, ?) ON CONFLICT(deviceId) DO NOTHING',
+      [deviceId, formatTimestamp(new Date())],
     );
   }
 
