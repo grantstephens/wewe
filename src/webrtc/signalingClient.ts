@@ -23,9 +23,12 @@ function defaultWebSocketFactory(url: string): WebSocketLike {
 }
 
 export interface SignalingHandlers {
-  onPeerJoined?: () => void;
-  onPeerLeft?: () => void;
-  onSignal?: (payload: unknown) => void;
+  /** deviceId is present only when this client is the Monitor (identifying which Parent joined) — see protocol.ts's PeerJoinedMessage doc. */
+  onPeerJoined?: (deviceId?: string) => void;
+  /** Same deviceId convention as onPeerJoined. */
+  onPeerLeft?: (deviceId?: string) => void;
+  /** from is present only when this client is the Monitor (identifying which Parent sent it). */
+  onSignal?: (payload: unknown, from?: string) => void;
   /** Fires on a relay-reported error or a socket-level failure; the connection is not usable afterward. */
   onError?: (message: string) => void;
   /** Fires when the underlying socket closes for any reason, including a clean one. */
@@ -57,6 +60,7 @@ export class SignalingClient {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private room = '';
   private role: Role = 'parent';
+  private deviceId: string | undefined;
   private handlers: SignalingHandlers = {};
 
   constructor(
@@ -64,10 +68,11 @@ export class SignalingClient {
     private readonly webSocketFactory: WebSocketFactory = defaultWebSocketFactory,
   ) {}
 
-  /** Opens the connection and joins `room` under `role`. Resolves once the relay acknowledges the join. */
-  connect(room: string, role: Role, handlers: SignalingHandlers): Promise<void> {
+  /** Opens the connection and joins `room` under `role` (with `deviceId` when role is 'parent'). Resolves once the relay acknowledges the join. */
+  connect(room: string, role: Role, handlers: SignalingHandlers, deviceId?: string): Promise<void> {
     this.room = room;
     this.role = role;
+    this.deviceId = deviceId;
     this.handlers = handlers;
     this.explicitlyClosed = false;
     return this.attemptConnect();
@@ -80,7 +85,9 @@ export class SignalingClient {
     let joined = false;
 
     socket.onopen = () => {
-      socket.send(JSON.stringify({ type: 'join', room: this.room, role: this.role } satisfies ClientMessage));
+      socket.send(
+        JSON.stringify({ type: 'join', room: this.room, role: this.role, deviceId: this.deviceId } satisfies ClientMessage),
+      );
     };
 
     socket.onmessage = (event) => {
@@ -100,13 +107,13 @@ export class SignalingClient {
           resolve();
           break;
         case 'peer-joined':
-          this.handlers.onPeerJoined?.();
+          this.handlers.onPeerJoined?.(message.deviceId);
           break;
         case 'peer-left':
-          this.handlers.onPeerLeft?.();
+          this.handlers.onPeerLeft?.(message.deviceId);
           break;
         case 'signal':
-          this.handlers.onSignal?.(message.payload);
+          this.handlers.onSignal?.(message.payload, message.from);
           break;
         case 'error':
           this.handlers.onError?.(message.message);
@@ -140,9 +147,9 @@ export class SignalingClient {
     }, delayMs);
   }
 
-  /** Sends an opaque signaling payload (an SDP description or an ICE candidate) to the other peer in the room. */
-  sendSignal(payload: unknown): void {
-    this.socket?.send(JSON.stringify({ type: 'signal', payload } satisfies ClientMessage));
+  /** Sends an opaque signaling payload (an SDP description or an ICE candidate) to the other peer in the room. `to` is required when this client is the Monitor (routing to a specific Parent); omitted otherwise. */
+  sendSignal(payload: unknown, to?: string): void {
+    this.socket?.send(JSON.stringify({ type: 'signal', payload, to } satisfies ClientMessage));
   }
 
   close(): void {

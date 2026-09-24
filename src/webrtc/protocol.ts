@@ -8,11 +8,13 @@
  */
 export type Role = 'monitor' | 'parent';
 
-export type ClientMessage = { type: 'join'; room: string; role: Role } | { type: 'signal'; payload: unknown };
+export type ClientMessage =
+  | { type: 'join'; room: string; role: Role; deviceId?: string }
+  | { type: 'signal'; payload: unknown; to?: string };
 
 export type ServerMessage =
   | { type: 'joined'; role: Role }
-  | { type: 'peer-joined' }
-  | { type: 'peer-left' }
-  | { type: 'signal'; payload: unknown }
+  | { type: 'peer-joined'; deviceId?: string }
+  | { type: 'peer-left'; deviceId?: string }
+  | { type: 'signal'; payload: unknown; from?: string }
   | { type: 'error'; message: string };
