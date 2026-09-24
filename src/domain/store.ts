@@ -47,6 +47,7 @@ export const SETTINGS_KEYS = {
   signalingServerUrl: 'signalingServerUrl',
   noiseGateSensitivity: 'noiseGateSensitivity',
   monitorPairingCode: 'monitorPairingCode',
+  deviceId: 'deviceId',
 } as const;
 
 /**
