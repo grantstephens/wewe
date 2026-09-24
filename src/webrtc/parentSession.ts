@@ -5,6 +5,7 @@ import {
   handleIncomingSdp,
   IceCandidateQueue,
   isCandidateSignal,
+  isRejectedSignal,
   isSdpSignal,
 } from './peerConnectionHelpers';
 import { DEFAULT_ICE_SERVERS } from './rtcConfig';
@@ -13,6 +14,8 @@ import { SignalingClient } from './signalingClient';
 export interface ParentSessionOptions {
   signalingUrl: string;
   pairingCode: string;
+  /** This install's persistent device identifier — see src/domain/deviceId.ts. Lets the Monitor recognize a reconnect versus a new device. */
+  deviceId: string;
   iceServers?: RTCIceServer[];
 }
 
@@ -26,6 +29,8 @@ export interface ParentSessionEvents {
   onSignalingReconnected?: () => void;
   /** Fires on a relay-reported error (e.g. "room-expired") or a socket-level failure — see SignalingClient.onError. */
   onError?: (message: string) => void;
+  /** Fires when the Monitor rejects this device — not yet authorized, and invite mode wasn't open at the time. Retrying later (e.g. once someone opens invite mode) can still succeed. */
+  onRejected?: (reason: string) => void;
 }
 
 /**
@@ -51,15 +56,25 @@ export class ParentSession {
 
   async start(): Promise<void> {
     this.setupPeerConnection();
-    await this.signaling.connect(this.options.pairingCode, 'parent', {
-      onPeerLeft: () => this.teardownPeerConnection(),
-      onSignal: (payload) => {
-        this.handleSignal(payload).catch(() => {});
+    await this.signaling.connect(
+      this.options.pairingCode,
+      'parent',
+      {
+        onPeerLeft: () => this.teardownPeerConnection(),
+        onSignal: (payload) => {
+          this.handleSignal(payload).catch(() => {});
+        },
+        onReconnecting: (attempt) => this.events.onSignalingReconnecting?.(attempt),
+        onReconnected: () => this.events.onSignalingReconnected?.(),
+        onError: (message) => this.events.onError?.(message),
       },
-      onReconnecting: (attempt) => this.events.onSignalingReconnecting?.(attempt),
-      onReconnected: () => this.events.onSignalingReconnected?.(),
-      onError: (message) => this.events.onError?.(message),
-    });
+      this.options.deviceId,
+    );
+  }
+
+  /** Asks the Monitor to open or close invite mode on this Parent's behalf — only honored if the Monitor still considers this deviceId connected (see MonitorSession.handleSignal). */
+  setInviteMode(open: boolean): void {
+    this.signaling.sendSignal({ inviteMode: open ? 'open' : 'closed' });
   }
 
   /**
@@ -136,6 +151,10 @@ export class ParentSession {
   }
 
   private async handleSignal(payload: unknown): Promise<void> {
+    if (isRejectedSignal(payload)) {
+      this.events.onRejected?.(payload.reason);
+      return;
+    }
     const pc = this.pc ?? this.setupPeerConnection();
     if (isSdpSignal(payload)) {
       await handleIncomingSdp(pc, payload.sdp, this.iceQueue, (p) => this.signaling.sendSignal(p));
