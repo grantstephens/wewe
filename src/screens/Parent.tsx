@@ -2,7 +2,11 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Button, List, Text, useTheme } from 'react-native-paper';
 
+import QRCode from 'react-native-qrcode-svg';
+
 import { CryAlertClassifier } from '../domain/cryAlert';
+import { getOrCreateDeviceId } from '../domain/deviceId';
+import { pairingUri } from '../domain/pairing';
 import { DEFAULT_SIGNALING_SERVER_URL, SETTINGS_KEYS, type PairedMonitor } from '../domain/store';
 import type { ActivityEvent } from '../domain/activityLog';
 import { formatTimestamp } from '../domain/timestamp';
@@ -53,6 +57,9 @@ export function ParentScreen({ route, navigation }: Props) {
   const [connectionState, setConnectionState] = React.useState('idle');
   const [reconnecting, setReconnecting] = React.useState<number | null>(null);
   const [connectTimedOut, setConnectTimedOut] = React.useState(false);
+  const [rejected, setRejected] = React.useState<string | null>(null);
+  const [invitingListener, setInvitingListener] = React.useState(false);
+  const [relayUrl, setRelayUrl] = React.useState<string | null>(null);
   const [events, setEvents] = React.useState<ActivityEvent[]>([]);
   const [talking, setTalking] = React.useState(false);
 
@@ -82,48 +89,53 @@ export function ParentScreen({ route, navigation }: Props) {
     if (!monitor) return;
     let cancelled = false;
     setConnectTimedOut(false);
+    setRejected(null);
 
     const timeoutId = setTimeout(() => {
       if (!cancelled) setConnectTimedOut(true);
     }, CONNECT_TIMEOUT_MS);
 
-    store.getSetting(SETTINGS_KEYS.signalingServerUrl).then((value) => {
-      const relayUrl = value || DEFAULT_SIGNALING_SERVER_URL;
-      if (cancelled) return;
+    Promise.all([store.getSetting(SETTINGS_KEYS.signalingServerUrl), getOrCreateDeviceId(store)]).then(
+      ([value, deviceId]) => {
+        const resolvedRelayUrl = value || DEFAULT_SIGNALING_SERVER_URL;
+        setRelayUrl(resolvedRelayUrl);
+        if (cancelled) return;
 
-      const session = new ParentSession(
-        { signalingUrl: relayUrl, pairingCode: monitor.lastPairingCode },
-        {
-          onConnectionStateChange: (state) => {
-            setConnectionState(state);
-            if (state === 'connected') {
-              clearTimeout(timeoutId);
-              setConnectTimedOut(false);
-              wasConnectedRef.current = true;
-            } else if ((state === 'disconnected' || state === 'failed') && wasConnectedRef.current) {
-              wasConnectedRef.current = false;
-              fireConnectionLostAlert(monitor.label).catch(() => {});
-              logEvent('disconnected').catch(() => {});
-            }
+        const session = new ParentSession(
+          { signalingUrl: resolvedRelayUrl, pairingCode: monitor.lastPairingCode, deviceId },
+          {
+            onConnectionStateChange: (state) => {
+              setConnectionState(state);
+              if (state === 'connected') {
+                clearTimeout(timeoutId);
+                setConnectTimedOut(false);
+                wasConnectedRef.current = true;
+              } else if ((state === 'disconnected' || state === 'failed') && wasConnectedRef.current) {
+                wasConnectedRef.current = false;
+                fireConnectionLostAlert(monitor.label).catch(() => {});
+                logEvent('disconnected').catch(() => {});
+              }
+            },
+            onSignalingReconnecting: (attempt) => setReconnecting(attempt),
+            onSignalingReconnected: () => setReconnecting(null),
+            onError: () => setConnectionState('failed'),
+            onRejected: (reason) => setRejected(reason),
           },
-          onSignalingReconnecting: (attempt) => setReconnecting(attempt),
-          onSignalingReconnected: () => setReconnecting(null),
-          onError: () => setConnectionState('failed'),
-        },
-      );
-      sessionRef.current = session;
-      session.start().catch(() => setConnectionState('failed'));
-      // MICROPHONE is deliberately not requested here: Android 14+ rejects a
-      // foreground-service type unless the app is actually using it at that
-      // exact moment (AppOpsManager's recording-state check), and Parent
-      // isn't recording yet at connect time — only during push-to-talk (see
-      // toggleTalk below). Requesting it upfront crashed with
-      // "SecurityException: ... the app must be in the eligible
-      // state/exemptions" on a real device.
-      startForegroundSession('Wewe', `Watching ${monitor.label}`, [
-        AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
-      ]).catch(() => {});
-    });
+        );
+        sessionRef.current = session;
+        session.start().catch(() => setConnectionState('failed'));
+        // MICROPHONE is deliberately not requested here: Android 14+ rejects a
+        // foreground-service type unless the app is actually using it at that
+        // exact moment (AppOpsManager's recording-state check), and Parent
+        // isn't recording yet at connect time — only during push-to-talk (see
+        // toggleTalk below). Requesting it upfront crashed with
+        // "SecurityException: ... the app must be in the eligible
+        // state/exemptions" on a real device.
+        startForegroundSession('Wewe', `Watching ${monitor.label}`, [
+          AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
+        ]).catch(() => {});
+      },
+    );
 
     return () => {
       cancelled = true;
@@ -187,11 +199,13 @@ export function ParentScreen({ route, navigation }: Props) {
         {monitor.label}
       </Text>
       <Text variant="bodyMedium" style={styles.status}>
-        {reconnecting !== null
-          ? `Reconnecting to relay (attempt ${reconnecting})…`
-          : connectTimedOut && connectionState !== 'connected'
-            ? "Couldn't reach that monitor. Check it's still running and try again."
-            : `Connection: ${connectionState}`}
+        {rejected !== null
+          ? 'Not let in yet — ask someone already connected to invite this device.'
+          : reconnecting !== null
+            ? `Reconnecting to relay (attempt ${reconnecting})…`
+            : connectTimedOut && connectionState !== 'connected'
+              ? "Couldn't reach that monitor. Check it's still running and try again."
+              : `Connection: ${connectionState}`}
       </Text>
 
       <Button
@@ -203,6 +217,28 @@ export function ParentScreen({ route, navigation }: Props) {
       >
         {talking ? 'Release to stop talking' : 'Hold to talk'}
       </Button>
+
+      <Button
+        mode={invitingListener ? 'contained' : 'outlined'}
+        icon="account-plus-outline"
+        onPress={() => {
+          const next = !invitingListener;
+          setInvitingListener(next);
+          sessionRef.current?.setInviteMode(next);
+        }}
+        style={styles.talkButton}
+      >
+        {invitingListener ? 'Stop inviting' : 'Invite a listener'}
+      </Button>
+
+      {invitingListener && (
+        <View style={styles.qrWrap}>
+          <QRCode value={pairingUri(monitor.lastPairingCode, relayUrl ?? '')} size={200} />
+          <Text variant="headlineMedium" style={styles.code}>
+            {monitor.lastPairingCode}
+          </Text>
+        </View>
+      )}
 
       <Text variant="titleMedium" style={styles.logTitle}>
         Activity
@@ -228,6 +264,8 @@ const styles = StyleSheet.create({
   title: { marginBottom: 4 },
   status: { marginBottom: 24 },
   talkButton: { marginBottom: 24 },
+  qrWrap: { padding: 16, backgroundColor: '#fff', borderRadius: 12, marginBottom: 16, alignItems: 'center' },
+  code: { letterSpacing: 4, marginTop: 8 },
   logTitle: { marginBottom: 8 },
   back: { marginTop: 16 },
 });
