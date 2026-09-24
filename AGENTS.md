@@ -126,10 +126,23 @@ Layered, dependencies pointing inward, same convention as DriveWell.
   `app.json`'s `react-native-notify-kit` plugin config (`android.foregroundService.types`,
   which the generated manifest's `<service foregroundServiceType="...">` is derived
   from) must be changed together — the plugin config needs a fresh `expo prebuild` to
-  take effect, a JS-only edit won't. Still **not** verified: whether the session
-  survives extended screen-off backgrounding, or holds up under Android 14+'s
-  microphone-type enforcement over a long push-to-talk session rather than a short
-  test — only confirmed it starts without crashing and stays foregrounded briefly.
+  take effect, a JS-only edit won't.
+- **A foreground-service type must reflect what the app is *actually* doing at that
+  exact instant, not what it might do later.** Parent used to request
+  `[MEDIA_PLAYBACK, MICROPHONE]` upfront on connect, before push-to-talk ever starts —
+  crashed for real with `SecurityException: Starting FGS with type microphone ...
+  requires permissions [FOREGROUND_SERVICE_MICROPHONE] ... and the app must be in the
+  eligible state/exemptions`. Android 14+ checks `AppOpsManager`'s live recording state
+  when a `microphone`-type foreground service starts, not just the permission grant;
+  Parent only actually records during push-to-talk (`ParentSession.startTalking()`
+  awaits `getUserMedia`), so requesting `MICROPHONE` before that call resolves fails
+  every time. Fixed: Parent starts with `[MEDIA_PLAYBACK]` only, then `toggleTalk` in
+  `Parent.tsx` re-calls `startForegroundSession` to add `MICROPHONE` *after*
+  `startTalking()` resolves (mic genuinely active by then) and downgrades back to
+  `[MEDIA_PLAYBACK]` on `stopTalking()`. Don't add `MICROPHONE` to any
+  `startForegroundSession()` call that isn't immediately preceded by an awaited,
+  resolved mic-capture start — this is the same class of bug, not a one-off. Still
+  **not** verified: whether the session survives extended screen-off backgrounding.
 
 ### Testing gotchas specific to this stack
 

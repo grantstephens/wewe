@@ -90,9 +90,15 @@ export function ParentScreen({ route, navigation }: Props) {
       );
       sessionRef.current = session;
       session.start().catch(() => setConnectionState('failed'));
+      // MICROPHONE is deliberately not requested here: Android 14+ rejects a
+      // foreground-service type unless the app is actually using it at that
+      // exact moment (AppOpsManager's recording-state check), and Parent
+      // isn't recording yet at connect time — only during push-to-talk (see
+      // toggleTalk below). Requesting it upfront crashed with
+      // "SecurityException: ... the app must be in the eligible
+      // state/exemptions" on a real device.
       startForegroundSession('Wewe', `Watching ${monitor.label}`, [
         AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
-        AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_MICROPHONE,
       ]).catch(() => {});
     });
 
@@ -124,9 +130,22 @@ export function ParentScreen({ route, navigation }: Props) {
     if (talking) {
       sessionRef.current?.stopTalking();
       setTalking(false);
+      // Downgrade back to MEDIA_PLAYBACK-only now that the mic is no longer
+      // in use, matching what's actually true (and what a future re-arm of
+      // MICROPHONE would need to be eligible for again).
+      startForegroundSession('Wewe', monitor ? `Watching ${monitor.label}` : 'Wewe', [
+        AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
+      ]).catch(() => {});
     } else {
+      // startTalking() awaits getUserMedia — the mic is genuinely active by
+      // the time this resolves, satisfying Android's eligibility check for
+      // adding MICROPHONE to the running foreground service.
       await sessionRef.current?.startTalking();
       setTalking(true);
+      startForegroundSession('Wewe', monitor ? `Watching ${monitor.label}` : 'Wewe', [
+        AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
+        AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_MICROPHONE,
+      ]).catch(() => {});
     }
   };
 
