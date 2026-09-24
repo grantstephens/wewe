@@ -49,7 +49,7 @@ export function MonitorScreen({ navigation }: Props) {
   // screen can tell "still loading" from "loaded, nothing configured".
   const [pairingCode, setPairingCode] = React.useState<string | undefined>(undefined);
   const [relayUrl, setRelayUrl] = React.useState<string | undefined>(undefined);
-  const [connectionState, setConnectionState] = React.useState('idle');
+  const [listenerCount, setListenerCount] = React.useState(0);
   const [reconnecting, setReconnecting] = React.useState<number | null>(null);
   const [gateOpen, setGateOpen] = React.useState(false);
 
@@ -77,22 +77,27 @@ export function MonitorScreen({ navigation }: Props) {
 
     const session = new MonitorSession(
       { signalingUrl: relayUrl, pairingCode },
+      store,
       {
-        onConnectionStateChange: setConnectionState,
+        onListenerCountChange: setListenerCount,
         onSignalingReconnecting: (attempt) => setReconnecting(attempt),
         onSignalingReconnected: () => setReconnecting(null),
       },
     );
     sessionRef.current = session;
-    session.start().catch(() => setConnectionState('failed'));
+    session.start().catch(() => {});
     advertiserRef.current.publish(pairingCode, pairingCode);
+    // The pairing screen being open IS this device's own invite-mode
+    // holder — see InviteMode's doc comment (src/domain/inviteMode.ts).
+    session.openLocalInvite();
 
     return () => {
+      session.closeLocalInvite();
       session.stop();
       advertiserRef.current.unpublish(pairingCode);
       stopForegroundSession().catch(() => {});
     };
-  }, [relayUrl, pairingCode]);
+  }, [relayUrl, pairingCode, store]);
 
   React.useEffect(() => {
     if (levelDb === null) return;
@@ -152,7 +157,9 @@ export function MonitorScreen({ navigation }: Props) {
             ? 'Requesting microphone…'
             : reconnecting !== null
               ? `Reconnecting to relay (attempt ${reconnecting})…`
-              : `Connection: ${connectionState}`}
+              : listenerCount === 0
+                ? 'No one listening yet'
+                : `${listenerCount} ${listenerCount === 1 ? 'listener' : 'listeners'} connected`}
         </Text>
       </View>
 
