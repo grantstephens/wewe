@@ -9,7 +9,7 @@ memory.
 
 Self-hostable: `npm install && npm run build && npm start`, `docker compose up -d`
 (see `docker-compose.yml`), or point the app's Settings screen at any instance running
-this. The app defaults to `wss://api.wewe.hub13.xyz` (this project's own convenience
+this. The app defaults to `wss://wewe-api.hub13.xyz` (this project's own convenience
 instance, see `src/domain/store.ts`'s `DEFAULT_SIGNALING_SERVER_URL`) so it works out of
 the box, but Settings always lets you override it — run your own or point at one
 someone you trust runs instead.

@@ -56,4 +56,4 @@ export const SETTINGS_KEYS = {
  * than every install needing `signal-server` self-hosted before pairing
  * works at all.
  */
-export const DEFAULT_SIGNALING_SERVER_URL = 'wss://api.wewe.hub13.xyz';
+export const DEFAULT_SIGNALING_SERVER_URL = 'wss://wewe-api.hub13.xyz';

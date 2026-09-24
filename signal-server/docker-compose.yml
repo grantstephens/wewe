@@ -23,11 +23,11 @@ services:
     # Traefik:
     # labels:
     #   - traefik.enable=true
-    #   - traefik.http.routers.wewe-signal.rule=Host(`api.wewe.hub13.xyz`)
+    #   - traefik.http.routers.wewe-signal.rule=Host(`wewe-api.hub13.xyz`)
     #   - traefik.http.routers.wewe-signal.tls.certresolver=letsencrypt
     #   - traefik.http.services.wewe-signal.loadbalancer.server.port=8787
     #
     # Caddy (lucaslorentz/caddy-docker-proxy):
     # labels:
-    #   caddy: api.wewe.hub13.xyz
+    #   caddy: wewe-api.hub13.xyz
     #   caddy.reverse_proxy: "{{upstreams 8787}}"
