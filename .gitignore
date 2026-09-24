@@ -31,3 +31,6 @@ yarn-error.*
 # signal-server
 signal-server/node_modules/
 signal-server/dist/
+
+# superpowers plan-execution scratch (ledgers, briefs, review packages)
+.superpowers/
