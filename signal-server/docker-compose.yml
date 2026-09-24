@@ -1,5 +1,11 @@
-# Minimal — no TLS/reverse proxy here; point your own existing one at
-# 127.0.0.1:8787 (or the mapped port below) on this host. See README.md
+# Minimal — no TLS here; point your own existing reverse proxy at this
+# host's :8787. Bound to all interfaces, not just localhost, since a
+# reverse proxy commonly runs on a separate host/container from whatever's
+# running this compose file (e.g. a dedicated Nginx Proxy Manager box) — a
+# 127.0.0.1-only bind is unreachable from anywhere else on the network,
+# confirmed by a real deployment where that produced a hard connection
+# refused from the proxy host. If your proxy genuinely runs on this same
+# host, both work equally; if not, only this one does. See README.md
 # "Self-hostable" for the wire protocol and why this service is stateless.
 services:
   signal-server:
@@ -7,7 +13,7 @@ services:
     build: .
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8787:8787"
+      - "8787:8787"
     environment:
       PORT: 8787
 

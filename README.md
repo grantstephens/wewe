@@ -76,9 +76,11 @@ In production, self-host it as a container: `signal-server/Dockerfile` builds a 
 image, and [`.github/workflows/docker.yml`](.github/workflows/docker.yml) publishes one
 to `ghcr.io/grantstephens/wewe-signal-server` on every push to `main` and on tags.
 `signal-server/docker-compose.yml` runs the published image directly
-(`docker compose up -d`), bound to `127.0.0.1:8787` — put your own reverse proxy in
-front to terminate TLS so the app can use `wss://` (see the compose file's commented-out
-Traefik/Caddy label examples). See [`signal-server/README.md`](signal-server/README.md)
+(`docker compose up -d`), bound to `:8787` on all interfaces — put your own reverse
+proxy in front to terminate TLS so the app can use `wss://` (see the compose file's
+commented-out Traefik/Caddy label examples; if your proxy runs on a different
+host/container, make sure it's actually reachable at that port, not just `localhost`).
+See [`signal-server/README.md`](signal-server/README.md)
 for the wire protocol and hardening knobs (room TTL, per-IP rate limiting).
 
 ### Releasing
