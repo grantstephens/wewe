@@ -115,35 +115,62 @@ describe('signaling relay', () => {
     await monitor.next(); // joined
 
     const parent = await TestClient.connect(server.url);
-    parent.send({ type: 'join', room: 'r1', role: 'parent' });
+    parent.send({ type: 'join', room: 'r1', role: 'parent', deviceId: 'dev-1' });
 
     await expect(parent.next()).resolves.toEqual({ type: 'joined', role: 'parent' });
     await expect(parent.next()).resolves.toEqual({ type: 'peer-joined' });
-    await expect(monitor.next()).resolves.toEqual({ type: 'peer-joined' });
+    await expect(monitor.next()).resolves.toEqual({ type: 'peer-joined', deviceId: 'dev-1' });
 
     await monitor.close();
     await parent.close();
   });
 
-  test('signal messages are relayed to the other role only, verbatim', async () => {
+  test('signal messages are relayed to the targeted parent, verbatim', async () => {
     const monitor = await TestClient.connect(server.url);
     monitor.send({ type: 'join', room: 'r1', role: 'monitor' });
     await monitor.next();
 
     const parent = await TestClient.connect(server.url);
-    parent.send({ type: 'join', room: 'r1', role: 'parent' });
+    parent.send({ type: 'join', room: 'r1', role: 'parent', deviceId: 'dev-1' });
     await parent.next(); // joined
     await monitor.next(); // peer-joined
     await parent.next(); // peer-joined
 
-    monitor.send({ type: 'signal', payload: { sdp: 'offer-blob' } });
+    monitor.send({ type: 'signal', payload: { sdp: 'offer-blob' }, to: 'dev-1' });
     await expect(parent.next()).resolves.toEqual({ type: 'signal', payload: { sdp: 'offer-blob' } });
 
     await monitor.close();
     await parent.close();
   });
 
-  test('a second socket claiming an already-taken role is rejected', async () => {
+  test('a signal from the parent arrives at the monitor tagged with its deviceId', async () => {
+    const monitor = await TestClient.connect(server.url);
+    monitor.send({ type: 'join', room: 'r1', role: 'monitor' });
+    await monitor.next();
+
+    const parent = await TestClient.connect(server.url);
+    parent.send({ type: 'join', room: 'r1', role: 'parent', deviceId: 'dev-1' });
+    await parent.next();
+    await monitor.next(); // peer-joined
+    await parent.next(); // peer-joined
+
+    parent.send({ type: 'signal', payload: { sdp: 'answer-blob' } });
+    await expect(monitor.next()).resolves.toEqual({ type: 'signal', payload: { sdp: 'answer-blob' }, from: 'dev-1' });
+
+    await monitor.close();
+    await parent.close();
+  });
+
+  test('a signal from the monitor missing "to" is rejected', async () => {
+    const monitor = await TestClient.connect(server.url);
+    monitor.send({ type: 'join', room: 'r1', role: 'monitor' });
+    await monitor.next();
+
+    monitor.send({ type: 'signal', payload: { sdp: 'x' } });
+    await expect(monitor.next()).resolves.toEqual({ type: 'error', message: 'invalid-message' });
+  });
+
+  test('a second monitor joining an already-occupied room is rejected', async () => {
     const monitor1 = await TestClient.connect(server.url);
     monitor1.send({ type: 'join', room: 'r1', role: 'monitor' });
     await monitor1.next();
@@ -155,16 +182,80 @@ describe('signaling relay', () => {
     await monitor1.close();
   });
 
+  test('a second, different-deviceId parent joins alongside the first — both connected simultaneously', async () => {
+    const monitor = await TestClient.connect(server.url);
+    monitor.send({ type: 'join', room: 'r1', role: 'monitor' });
+    await monitor.next();
+
+    const parentA = await TestClient.connect(server.url);
+    parentA.send({ type: 'join', room: 'r1', role: 'parent', deviceId: 'dev-a' });
+    await parentA.next(); // joined
+    await monitor.next(); // peer-joined dev-a
+    await parentA.next(); // peer-joined (monitor)
+
+    const parentB = await TestClient.connect(server.url);
+    parentB.send({ type: 'join', room: 'r1', role: 'parent', deviceId: 'dev-b' });
+    await expect(parentB.next()).resolves.toEqual({ type: 'joined', role: 'parent' });
+    await expect(parentB.next()).resolves.toEqual({ type: 'peer-joined' });
+    await expect(monitor.next()).resolves.toEqual({ type: 'peer-joined', deviceId: 'dev-b' });
+
+    monitor.send({ type: 'signal', payload: 'for-a', to: 'dev-a' });
+    monitor.send({ type: 'signal', payload: 'for-b', to: 'dev-b' });
+    await expect(parentA.next()).resolves.toEqual({ type: 'signal', payload: 'for-a' });
+    await expect(parentB.next()).resolves.toEqual({ type: 'signal', payload: 'for-b' });
+
+    await monitor.close();
+    await parentA.close();
+    await parentB.close();
+  });
+
+  test('a join with the same deviceId as an already-connected parent replaces it silently — no peer-left/peer-joined churn', async () => {
+    const monitor = await TestClient.connect(server.url);
+    monitor.send({ type: 'join', room: 'r1', role: 'monitor' });
+    await monitor.next();
+
+    const parent1 = await TestClient.connect(server.url);
+    parent1.send({ type: 'join', room: 'r1', role: 'parent', deviceId: 'dev-1' });
+    await parent1.next();
+    await monitor.next(); // peer-joined dev-1
+    await parent1.next(); // peer-joined
+
+    const parent2 = await TestClient.connect(server.url);
+    parent2.send({ type: 'join', room: 'r1', role: 'parent', deviceId: 'dev-1' });
+    await expect(parent2.next()).resolves.toEqual({ type: 'joined', role: 'parent' });
+    await expect(parent2.next()).resolves.toEqual({ type: 'peer-joined' });
+
+    // Old socket getting superseded must not tell the monitor peer-left,
+    // and no fresh peer-joined for the same deviceId either.
+    const gotChurn = await Promise.race([
+      monitor.next().then(() => true),
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 100)),
+    ]);
+    expect(gotChurn).toBe(false);
+
+    // The new socket, not the old one, is now live for this deviceId.
+    monitor.send({ type: 'signal', payload: 'still-here', to: 'dev-1' });
+    await expect(parent2.next()).resolves.toEqual({ type: 'signal', payload: 'still-here' });
+
+    // parent1 is not closed here: the server already closed its connection
+    // when parent2 superseded it (that's what this test exercises) — its
+    // 'close' event fired before a listener could ever be attached for it,
+    // so awaiting a fresh TestClient.close() on it here would wait on an
+    // event that will never come again.
+    await monitor.close();
+    await parent2.close();
+  });
+
   test('two different rooms do not see each other\'s signals', async () => {
     const monitorA = await TestClient.connect(server.url);
     monitorA.send({ type: 'join', room: 'roomA', role: 'monitor' });
     await monitorA.next();
 
     const parentB = await TestClient.connect(server.url);
-    parentB.send({ type: 'join', room: 'roomB', role: 'parent' });
+    parentB.send({ type: 'join', room: 'roomB', role: 'parent', deviceId: 'dev-b' });
     await parentB.next();
 
-    monitorA.send({ type: 'signal', payload: 'hello' });
+    monitorA.send({ type: 'signal', payload: 'hello', to: 'dev-b' });
 
     // Proving a negative ("parentB never receives anything") has no event to
     // await — this is the documented exception for a genuine wall-clock
@@ -180,22 +271,49 @@ describe('signaling relay', () => {
     await parentB.close();
   });
 
-  test('when one peer disconnects, the other is told peer-left', async () => {
+  test('when a parent disconnects, the monitor is told peer-left with its deviceId', async () => {
     const monitor = await TestClient.connect(server.url);
     monitor.send({ type: 'join', room: 'r1', role: 'monitor' });
     await monitor.next();
 
     const parent = await TestClient.connect(server.url);
-    parent.send({ type: 'join', room: 'r1', role: 'parent' });
+    parent.send({ type: 'join', room: 'r1', role: 'parent', deviceId: 'dev-1' });
     await parent.next();
     await monitor.next(); // peer-joined
     await parent.next(); // peer-joined
 
     const peerLeft = monitor.next();
     await parent.close();
-    await expect(peerLeft).resolves.toEqual({ type: 'peer-left' });
+    await expect(peerLeft).resolves.toEqual({ type: 'peer-left', deviceId: 'dev-1' });
 
     await monitor.close();
+  });
+
+  test('when the monitor disconnects, every parent is told peer-left', async () => {
+    const monitor = await TestClient.connect(server.url);
+    monitor.send({ type: 'join', room: 'r1', role: 'monitor' });
+    await monitor.next();
+
+    const parentA = await TestClient.connect(server.url);
+    parentA.send({ type: 'join', room: 'r1', role: 'parent', deviceId: 'dev-a' });
+    await parentA.next();
+    await monitor.next();
+    await parentA.next();
+
+    const parentB = await TestClient.connect(server.url);
+    parentB.send({ type: 'join', room: 'r1', role: 'parent', deviceId: 'dev-b' });
+    await parentB.next();
+    await monitor.next();
+    await parentB.next();
+
+    const leftA = parentA.next();
+    const leftB = parentB.next();
+    await monitor.close();
+    await expect(leftA).resolves.toEqual({ type: 'peer-left' });
+    await expect(leftB).resolves.toEqual({ type: 'peer-left' });
+
+    await parentA.close();
+    await parentB.close();
   });
 
   test('a room can be reused after both peers leave', async () => {
@@ -252,14 +370,14 @@ describe('room TTL', () => {
     await monitor.next();
 
     const parent = await TestClient.connect(server.url);
-    parent.send({ type: 'join', room: 'r1', role: 'parent' });
+    parent.send({ type: 'join', room: 'r1', role: 'parent', deviceId: 'dev-1' });
     await parent.next();
     await monitor.next(); // peer-joined
     await parent.next(); // peer-joined
 
     // Outlast the TTL that would have fired had the room stayed at one peer.
     await new Promise((resolve) => setTimeout(resolve, SHORT_TTL_MS * 3));
-    monitor.send({ type: 'signal', payload: 'still-alive' });
+    monitor.send({ type: 'signal', payload: 'still-alive', to: 'dev-1' });
     await expect(parent.next()).resolves.toEqual({ type: 'signal', payload: 'still-alive' });
 
     await monitor.close();
@@ -274,13 +392,13 @@ describe('room TTL', () => {
     await monitor.next();
 
     const parent = await TestClient.connect(server.url);
-    parent.send({ type: 'join', room: 'r1', role: 'parent' });
+    parent.send({ type: 'join', room: 'r1', role: 'parent', deviceId: 'dev-1' });
     await parent.next();
     await monitor.next(); // peer-joined
     await parent.next(); // peer-joined
 
     await parent.close(); // room drops back to one peer (monitor)
-    await expect(monitor.next()).resolves.toEqual({ type: 'peer-left' });
+    await expect(monitor.next()).resolves.toEqual({ type: 'peer-left', deviceId: 'dev-1' });
     await expect(monitor.next()).resolves.toEqual({ type: 'error', message: 'room-expired' });
 
     await monitor.close();

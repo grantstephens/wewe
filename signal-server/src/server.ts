@@ -4,12 +4,17 @@ import { WebSocket, WebSocketServer } from 'ws';
 
 import { isClientMessage, type ErrorReason, type Role, type ServerMessage } from './protocol';
 
-/** A room holds at most one socket per role. Rooms with no sockets left are deleted, so memory never grows with churn. */
-type Room = Partial<Record<Role, WebSocket>>;
+/**
+ * A room holds at most one Monitor and any number of Parents, each keyed by
+ * deviceId. Rooms with no occupants left are deleted, so memory never grows
+ * with churn.
+ */
+interface Room {
+  monitor?: WebSocket;
+  parents: Map<string, WebSocket>;
+}
 
-const OTHER_ROLE: Record<Role, Role> = { monitor: 'parent', parent: 'monitor' };
-
-/** A lone peer waiting for its match gets disconnected after this long — see `SignalingServerOptions.roomTtlMs`'s doc comment for why. */
+/** A lone side waiting for its match gets disconnected after this long — see `SignalingServerOptions.roomTtlMs`'s doc comment for why. */
 const DEFAULT_ROOM_TTL_MS = 5 * 60 * 1000;
 
 /** Default per-IP join-attempt budget — see `SignalingServerOptions.rateLimitMax`'s doc comment. */
@@ -18,13 +23,14 @@ const DEFAULT_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 
 export interface SignalingServerOptions {
   /**
-   * How long a room may hold exactly one peer before that lone peer is
-   * disconnected with `room-expired` and the room is forgotten. Pairing
+   * How long a room may have exactly one side present (a Monitor with no
+   * Parents, or one-or-more Parents with no Monitor) before every occupant
+   * is disconnected with `room-expired` and the room is forgotten. Pairing
    * codes are short (six digits — one million possibilities) and reused as
    * the room name directly, so an attacker guessing codes could otherwise
-   * camp in a real monitor's room indefinitely, waiting to receive its next
-   * offer. Bounding how long an unclaimed room stays open bounds that
-   * exposure window without changing the pairing UX.
+   * camp in a real monitor's room indefinitely. Bounding how long an
+   * unmatched room stays open bounds that exposure window without changing
+   * the pairing UX.
    */
   roomTtlMs?: number;
   /**
@@ -84,6 +90,13 @@ export function attachSignalingServer(wss: WebSocketServer, options: SignalingSe
 
   const rooms = new Map<string, Room>();
   const roomTimers = new Map<string, NodeJS.Timeout>();
+  // Sockets that have been replaced by a same-deviceId reconnect before
+  // they finished closing on their own — their close handler must not run
+  // the normal room-cleanup logic, or it would delete the *new* socket's
+  // room membership out from under it (both entries live under the same
+  // deviceId key; the close handler only knows "my deviceId", not "am I
+  // still the current socket for it").
+  const supersededSockets = new WeakSet<WebSocket>();
 
   function clearRoomTimer(roomName: string): void {
     const timer = roomTimers.get(roomName);
@@ -93,22 +106,29 @@ export function attachSignalingServer(wss: WebSocketServer, options: SignalingSe
     }
   }
 
-  /** Called whenever a room's occupancy might have changed to exactly one peer, zero peers, or two peers — arms/disarms the TTL timer to match. */
+  function occupants(room: Room): WebSocket[] {
+    const list = [...room.parents.values()];
+    if (room.monitor !== undefined) list.push(room.monitor);
+    return list;
+  }
+
+  /** Called whenever a room's occupancy might have changed — arms the TTL only when exactly one side (Monitor alone, or Parent(s) alone) is present; disarms it once both sides are present or the room is empty (empty rooms are deleted outright, not timed). */
   function rearmRoomTimer(roomName: string, room: Room): void {
     clearRoomTimer(roomName);
-    const occupants = Object.values(room).filter((s): s is WebSocket => s !== undefined);
-    if (occupants.length !== 1) return;
+    const hasMonitor = room.monitor !== undefined;
+    const hasAnyParent = room.parents.size > 0;
+    if (hasMonitor === hasAnyParent) return; // both present (matched) or both absent (empty)
 
     const timer = setTimeout(() => {
       roomTimers.delete(roomName);
       const current = rooms.get(roomName);
       if (current === undefined) return;
-      for (const socket of Object.values(current)) {
-        if (socket !== undefined) closeWithError(socket, 'room-expired');
+      for (const socket of occupants(current)) {
+        closeWithError(socket, 'room-expired');
       }
       rooms.delete(roomName);
     }, roomTtlMs);
-    // A lone peer's TTL timer must never keep the process alive on its own.
+    // A lone side's TTL timer must never keep the process alive on its own.
     timer.unref?.();
     roomTimers.set(roomName, timer);
   }
@@ -117,6 +137,7 @@ export function attachSignalingServer(wss: WebSocketServer, options: SignalingSe
     const remoteAddress = request.socket.remoteAddress ?? 'unknown';
     let joinedRoom: string | null = null;
     let joinedRole: Role | null = null;
+    let joinedDeviceId: string | null = null;
 
     socket.on('message', (raw) => {
       let parsed: unknown;
@@ -140,22 +161,48 @@ export function attachSignalingServer(wss: WebSocketServer, options: SignalingSe
           closeWithError(socket, 'rate-limited');
           return;
         }
-        const room = rooms.get(parsed.room) ?? {};
-        if (room[parsed.role] !== undefined) {
-          closeWithError(socket, 'role-taken');
+        const room = rooms.get(parsed.room) ?? { parents: new Map<string, WebSocket>() };
+        rooms.set(parsed.room, room);
+
+        if (parsed.role === 'monitor') {
+          if (room.monitor !== undefined) {
+            closeWithError(socket, 'role-taken');
+            return;
+          }
+          room.monitor = socket;
+          joinedRoom = parsed.room;
+          joinedRole = 'monitor';
+          rearmRoomTimer(parsed.room, room);
+
+          send(socket, { type: 'joined', role: 'monitor' });
+          for (const [deviceId, parentSocket] of room.parents) {
+            send(socket, { type: 'peer-joined', deviceId });
+            send(parentSocket, { type: 'peer-joined' });
+          }
           return;
         }
-        room[parsed.role] = socket;
-        rooms.set(parsed.room, room);
+
+        // role === 'parent'; isClientMessage guarantees deviceId is a string here.
+        const deviceId = parsed.deviceId as string;
+        const existing = room.parents.get(deviceId);
+        if (existing !== undefined && existing !== socket) {
+          supersededSockets.add(existing);
+          existing.close();
+        }
+        room.parents.set(deviceId, socket);
         joinedRoom = parsed.room;
-        joinedRole = parsed.role;
+        joinedRole = 'parent';
+        joinedDeviceId = deviceId;
         rearmRoomTimer(parsed.room, room);
 
-        send(socket, { type: 'joined', role: parsed.role });
-        const other = room[OTHER_ROLE[parsed.role]];
-        if (other !== undefined) {
+        send(socket, { type: 'joined', role: 'parent' });
+        if (room.monitor !== undefined) {
           send(socket, { type: 'peer-joined' });
-          send(other, { type: 'peer-joined' });
+          // Only a genuinely new device needs telling the Monitor about —
+          // a reconnect's deviceId is already known to it.
+          if (existing === undefined) {
+            send(room.monitor, { type: 'peer-joined', deviceId });
+          }
         }
         return;
       }
@@ -166,24 +213,55 @@ export function attachSignalingServer(wss: WebSocketServer, options: SignalingSe
         return;
       }
       const room = rooms.get(joinedRoom);
-      const other = room?.[OTHER_ROLE[joinedRole]];
-      if (other !== undefined) {
-        send(other, { type: 'signal', payload: parsed.payload });
+      if (room === undefined) return;
+
+      if (joinedRole === 'monitor') {
+        if (parsed.to === undefined) {
+          closeWithError(socket, 'invalid-message');
+          return;
+        }
+        const target = room.parents.get(parsed.to);
+        if (target !== undefined) {
+          send(target, { type: 'signal', payload: parsed.payload });
+        }
+        return;
+      }
+
+      // joinedRole === 'parent': the only possible recipient is the Monitor.
+      if (room.monitor !== undefined) {
+        send(room.monitor, { type: 'signal', payload: parsed.payload, from: joinedDeviceId as string });
       }
     });
 
     socket.on('close', () => {
+      if (supersededSockets.has(socket)) return;
       if (joinedRoom === null || joinedRole === null) return;
       const room = rooms.get(joinedRoom);
       if (room === undefined) return;
-      delete room[joinedRole];
-      const other = room[OTHER_ROLE[joinedRole]];
-      if (other !== undefined) {
-        send(other, { type: 'peer-left' });
-        rearmRoomTimer(joinedRoom, room);
+
+      if (joinedRole === 'monitor') {
+        delete room.monitor;
+        for (const parentSocket of room.parents.values()) {
+          send(parentSocket, { type: 'peer-left' });
+        }
       } else {
+        const deviceId = joinedDeviceId as string;
+        // Guard against the same reconnect race from this direction too: if
+        // a newer socket already took over this deviceId, this stale
+        // close must not delete its (unrelated) current entry.
+        if (room.parents.get(deviceId) === socket) {
+          room.parents.delete(deviceId);
+          if (room.monitor !== undefined) {
+            send(room.monitor, { type: 'peer-left', deviceId });
+          }
+        }
+      }
+
+      if (room.monitor === undefined && room.parents.size === 0) {
         clearRoomTimer(joinedRoom);
         rooms.delete(joinedRoom);
+      } else {
+        rearmRoomTimer(joinedRoom, room);
       }
     });
   });
