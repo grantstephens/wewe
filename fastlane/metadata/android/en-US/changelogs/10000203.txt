@@ -1,0 +1,4 @@
+* The app now defaults to a hosted signaling relay (wss://wewe.hub13.xyz), so
+  pairing works out of the box — no server setup required. Settings still lets
+  you point at your own instance instead.
+* Added docker-compose.yml for self-hosting the signaling relay.
