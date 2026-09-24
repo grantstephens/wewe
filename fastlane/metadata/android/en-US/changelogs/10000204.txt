@@ -1,0 +1,7 @@
+* Settings now links to a real privacy page (wewe.hub13.xyz/privacy) instead of a
+  confusing repo file reference.
+* The default signaling relay moved to api.wewe.hub13.xyz, split from the main
+  domain, which now hosts a static site/privacy page.
+
+Note: api.wewe.hub13.xyz is still being set up — default pairing may not work
+until that DNS/reverse-proxy change lands.
