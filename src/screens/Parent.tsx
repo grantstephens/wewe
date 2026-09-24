@@ -18,6 +18,20 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Parent'>;
 /** How often to poll `getStats()` for the inbound audio level driving `CryAlertClassifier`. */
 const LEVEL_POLL_MS = 500;
 
+/**
+ * How long to wait for a first connection before showing "couldn't reach
+ * that monitor". There's no way to distinguish "wrong/expired pairing code"
+ * from "right code, monitor just hasn't joined yet" at connect time — both
+ * look identical to the signaling server (see signal-server/README.md's
+ * join/peer-joined protocol) — so this is a plain watchdog, not a real
+ * error detector. The session keeps trying in the background past this
+ * point (up to the relay's own room TTL); this only changes what the UI
+ * says while that happens, instead of leaving the user staring at an
+ * unchanging "Connection: idle" forever, which is what an unset, unconnected
+ * session used to render.
+ */
+const CONNECT_TIMEOUT_MS = 20_000;
+
 function newEventId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
@@ -38,6 +52,7 @@ export function ParentScreen({ route, navigation }: Props) {
   const [monitor, setMonitor] = React.useState<PairedMonitor | null>(null);
   const [connectionState, setConnectionState] = React.useState('idle');
   const [reconnecting, setReconnecting] = React.useState<number | null>(null);
+  const [connectTimedOut, setConnectTimedOut] = React.useState(false);
   const [events, setEvents] = React.useState<ActivityEvent[]>([]);
   const [talking, setTalking] = React.useState(false);
 
@@ -66,6 +81,11 @@ export function ParentScreen({ route, navigation }: Props) {
   React.useEffect(() => {
     if (!monitor) return;
     let cancelled = false;
+    setConnectTimedOut(false);
+
+    const timeoutId = setTimeout(() => {
+      if (!cancelled) setConnectTimedOut(true);
+    }, CONNECT_TIMEOUT_MS);
 
     store.getSetting(SETTINGS_KEYS.signalingServerUrl).then((value) => {
       const relayUrl = value || DEFAULT_SIGNALING_SERVER_URL;
@@ -77,6 +97,8 @@ export function ParentScreen({ route, navigation }: Props) {
           onConnectionStateChange: (state) => {
             setConnectionState(state);
             if (state === 'connected') {
+              clearTimeout(timeoutId);
+              setConnectTimedOut(false);
               wasConnectedRef.current = true;
             } else if ((state === 'disconnected' || state === 'failed') && wasConnectedRef.current) {
               wasConnectedRef.current = false;
@@ -86,6 +108,7 @@ export function ParentScreen({ route, navigation }: Props) {
           },
           onSignalingReconnecting: (attempt) => setReconnecting(attempt),
           onSignalingReconnected: () => setReconnecting(null),
+          onError: () => setConnectionState('failed'),
         },
       );
       sessionRef.current = session;
@@ -104,6 +127,7 @@ export function ParentScreen({ route, navigation }: Props) {
 
     return () => {
       cancelled = true;
+      clearTimeout(timeoutId);
       sessionRef.current?.stop();
       sessionRef.current = null;
       stopForegroundSession().catch(() => {});
@@ -165,7 +189,9 @@ export function ParentScreen({ route, navigation }: Props) {
       <Text variant="bodyMedium" style={styles.status}>
         {reconnecting !== null
           ? `Reconnecting to relay (attempt ${reconnecting})…`
-          : `Connection: ${connectionState}`}
+          : connectTimedOut && connectionState !== 'connected'
+            ? "Couldn't reach that monitor. Check it's still running and try again."
+            : `Connection: ${connectionState}`}
       </Text>
 
       <Button

@@ -24,6 +24,8 @@ export interface ParentSessionEvents {
   onSignalingReconnecting?: (attempt: number) => void;
   /** Fires once a signaling retry successfully rejoins the room. */
   onSignalingReconnected?: () => void;
+  /** Fires on a relay-reported error (e.g. "room-expired") or a socket-level failure — see SignalingClient.onError. */
+  onError?: (message: string) => void;
 }
 
 /**
@@ -56,6 +58,7 @@ export class ParentSession {
       },
       onReconnecting: (attempt) => this.events.onSignalingReconnecting?.(attempt),
       onReconnected: () => this.events.onSignalingReconnected?.(),
+      onError: (message) => this.events.onError?.(message),
     });
   }
 
