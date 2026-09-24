@@ -25,21 +25,29 @@ function levelToFraction(levelDb: number): number {
 }
 
 /**
- * Monitor turns this device into the "I have the microphone" side: it
- * generates a fresh pairing code, advertises it on the local network,
- * displays it as a QR code for AddMonitor to scan, and streams audio to
- * whichever Parent joins — gated by the local NoiseGate exactly the way
- * PLAN.md describes, so quiet nursery time transmits nothing.
+ * Monitor turns this device into the "I have the microphone" side:
+ * displays a pairing code as a QR code for AddMonitor to scan, advertises
+ * it on the local network, and streams audio to whichever Parent joins —
+ * gated by the local NoiseGate exactly the way PLAN.md describes, so quiet
+ * nursery time transmits nothing.
+ *
+ * The pairing code is persisted (`SETTINGS_KEYS.monitorPairingCode`), not
+ * regenerated every mount: a Parent that's already paired keeps reconnecting
+ * with `monitor.lastPairingCode` on every visit (see Parent.tsx), so a fresh
+ * random code here on every Monitor session would silently orphan every
+ * previously-paired Parent — confirmed as a real reported bug, not a
+ * hypothetical. Only ever generated once per install; reused indefinitely
+ * after that.
  */
 export function MonitorScreen({ navigation }: Props) {
   const theme = useTheme();
   const { store } = useWewe();
   const { levelDb, isReady, isRecording } = useMicLevel();
 
-  const [pairingCode] = React.useState(() => generatePairingCode());
-  // undefined: getSetting hasn't resolved yet — kept distinguishable from an
-  // empty/unset stored value (which falls back to the default below) so
-  // this screen can tell "still loading" from "loaded, nothing configured".
+  // undefined: neither setting has resolved yet — kept distinguishable from
+  // an empty/unset relayUrl (which falls back to the default below) so this
+  // screen can tell "still loading" from "loaded, nothing configured".
+  const [pairingCode, setPairingCode] = React.useState<string | undefined>(undefined);
   const [relayUrl, setRelayUrl] = React.useState<string | undefined>(undefined);
   const [connectionState, setConnectionState] = React.useState('idle');
   const [reconnecting, setReconnecting] = React.useState<number | null>(null);
@@ -54,7 +62,18 @@ export function MonitorScreen({ navigation }: Props) {
   }, [store]);
 
   React.useEffect(() => {
-    if (!relayUrl) return;
+    store.getSetting(SETTINGS_KEYS.monitorPairingCode).then((existing) => {
+      if (existing) {
+        setPairingCode(existing);
+        return;
+      }
+      const code = generatePairingCode();
+      store.setSetting(SETTINGS_KEYS.monitorPairingCode, code).then(() => setPairingCode(code));
+    });
+  }, [store]);
+
+  React.useEffect(() => {
+    if (!relayUrl || !pairingCode) return;
 
     const session = new MonitorSession(
       { signalingUrl: relayUrl, pairingCode },
@@ -101,7 +120,7 @@ export function MonitorScreen({ navigation }: Props) {
     ]).catch(() => {});
   }, [isRecording]);
 
-  if (relayUrl === undefined) {
+  if (relayUrl === undefined || pairingCode === undefined) {
     return (
       <View style={[styles.container, styles.centered, { backgroundColor: theme.colors.background }]}>
         <Text>Loading…</Text>

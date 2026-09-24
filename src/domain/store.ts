@@ -46,6 +46,7 @@ export interface Store {
 export const SETTINGS_KEYS = {
   signalingServerUrl: 'signalingServerUrl',
   noiseGateSensitivity: 'noiseGateSensitivity',
+  monitorPairingCode: 'monitorPairingCode',
 } as const;
 
 /**

@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import React from 'react';
-import { FlatList, StyleSheet, View } from 'react-native';
-import { Button, List, Text, useTheme } from 'react-native-paper';
+import { Alert, FlatList, StyleSheet, View } from 'react-native';
+import { Button, Dialog, IconButton, List, Portal, Text, TextInput, useTheme } from 'react-native-paper';
 
 import type { PairedMonitor } from '../domain/store';
 import type { RootStackParamList } from '../navigation';
@@ -17,12 +17,41 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
  */
 export function HomeScreen({ navigation }: Props) {
   const theme = useTheme();
-  const { store, revision } = useWewe();
+  const { store, bump, revision } = useWewe();
   const [monitors, setMonitors] = React.useState<PairedMonitor[]>([]);
+  const [renaming, setRenaming] = React.useState<PairedMonitor | null>(null);
+  const [renameDraft, setRenameDraft] = React.useState('');
 
   React.useEffect(() => {
     store.monitors().then(setMonitors);
   }, [store, revision]);
+
+  const removeMonitor = (monitor: PairedMonitor) => {
+    Alert.alert('Remove monitor?', `This deletes "${monitor.label}" and its activity log from this device.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: () => {
+          store.removeMonitor(monitor.id).then(bump);
+        },
+      },
+    ]);
+  };
+
+  const startRename = (monitor: PairedMonitor) => {
+    setRenaming(monitor);
+    setRenameDraft(monitor.label);
+  };
+
+  const saveRename = () => {
+    if (!renaming) return;
+    const label = renameDraft.trim();
+    if (label) {
+      store.addMonitor({ ...renaming, label }).then(bump);
+    }
+    setRenaming(null);
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -43,10 +72,31 @@ export function HomeScreen({ navigation }: Props) {
             title={item.label}
             description="Tap to view"
             left={(props) => <List.Icon {...props} icon="baby-face-outline" />}
+            right={() => (
+              <View style={styles.itemActions}>
+                <IconButton icon="pencil-outline" onPress={() => startRename(item)} />
+                <IconButton icon="delete-outline" onPress={() => removeMonitor(item)} />
+              </View>
+            )}
             onPress={() => navigation.navigate('Parent', { monitorId: item.id })}
           />
         )}
       />
+
+      <Portal>
+        <Dialog visible={renaming !== null} onDismiss={() => setRenaming(null)}>
+          <Dialog.Title>Rename monitor</Dialog.Title>
+          <Dialog.Content>
+            <TextInput label="Name" value={renameDraft} onChangeText={setRenameDraft} autoFocus />
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setRenaming(null)}>Cancel</Button>
+            <Button onPress={saveRename} disabled={!renameDraft.trim()}>
+              Save
+            </Button>
+          </Dialog.Actions>
+        </Dialog>
+      </Portal>
       <View style={styles.actions}>
         <Button
           mode="contained"
@@ -77,6 +127,7 @@ const styles = StyleSheet.create({
   title: { marginBottom: 16 },
   list: { flex: 1 },
   empty: { marginTop: 32, textAlign: 'center' },
+  itemActions: { flexDirection: 'row' },
   actions: { gap: 12, marginTop: 16 },
   button: {},
 });
