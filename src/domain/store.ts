@@ -47,3 +47,13 @@ export const SETTINGS_KEYS = {
   signalingServerUrl: 'signalingServerUrl',
   noiseGateSensitivity: 'noiseGateSensitivity',
 } as const;
+
+/**
+ * The convenience default for `SETTINGS_KEYS.signalingServerUrl` when
+ * nothing's been explicitly configured — a relay the project maintainer
+ * runs, not a hard requirement. Settings screen still lets anyone point at
+ * their own instead; this just means the app works out of the box rather
+ * than every install needing `signal-server` self-hosted before pairing
+ * works at all.
+ */
+export const DEFAULT_SIGNALING_SERVER_URL = 'wss://wewe.hub13.xyz';

@@ -2,14 +2,15 @@ import React from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { Button, HelperText, Text, TextInput, useTheme } from 'react-native-paper';
 
-import { SETTINGS_KEYS } from '../domain/store';
+import { DEFAULT_SIGNALING_SERVER_URL, SETTINGS_KEYS } from '../domain/store';
 import { useWewe } from '../WeweContext';
 
 /**
- * The signaling relay URL has no default baked into the app (see PLAN.md
- * and signal-server/README.md: "There is no default public instance baked
- * into the app"). A user runs their own or points at one they trust, and
- * both Monitor and Parent screens read this same persisted value.
+ * The signaling relay URL defaults to DEFAULT_SIGNALING_SERVER_URL (a
+ * convenience instance the project maintainer runs) so the app works out
+ * of the box, but nothing requires using it — this field always shows the
+ * effective value and Save persists whatever's typed here, overriding the
+ * default. Both Monitor and Parent screens read this same persisted value.
  */
 export function SettingsScreen() {
   const theme = useTheme();
@@ -18,7 +19,7 @@ export function SettingsScreen() {
   const [saved, setSaved] = React.useState(false);
 
   React.useEffect(() => {
-    store.getSetting(SETTINGS_KEYS.signalingServerUrl).then((value) => setRelayUrl(value ?? ''));
+    store.getSetting(SETTINGS_KEYS.signalingServerUrl).then((value) => setRelayUrl(value || DEFAULT_SIGNALING_SERVER_URL));
   }, [store]);
 
   const save = async () => {

@@ -86,10 +86,13 @@ Layered, dependencies pointing inward, same convention as DriveWell.
   went first. This is what makes push-to-talk work: the Parent, normally only ever an
   answerer for the initial call, becomes an offerer the moment `startTalking()` adds its
   track. Don't reintroduce a "the offerer is always X" assumption in either session.
-- **No default signaling relay is baked into the app.** `SETTINGS_KEYS.signalingServerUrl`
-  starts unset; Monitor and AddMonitor screens both branch to a "configure it first"
-  state rather than falling back to some hardcoded host. Keep it that way — see
-  `signal-server/README.md` for why.
+- **The signaling relay has a convenience default, not a hard requirement.**
+  `SETTINGS_KEYS.signalingServerUrl` falls back to `DEFAULT_SIGNALING_SERVER_URL`
+  (`src/domain/store.ts`, currently `wss://wewe.hub13.xyz`, an instance the project
+  maintainer runs) at every read site when unset, so the app works out of the box —
+  but Settings still persists an explicit override that always wins. This reverses an
+  earlier decision (see git history / PLAN.md's open items) to have no default at all;
+  don't hardcode the default URL anywhere except that one constant.
 - **`react-native-webrtc`'s shipped TypeScript declarations are missing their
   `vendor/event-target-shim` module** in the installed version at the time this was
   written (verify with `find node_modules/react-native-webrtc/lib/typescript -iname

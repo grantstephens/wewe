@@ -7,10 +7,12 @@ STUN-derived path ICE found) — this process never sees audio, only small
 JSON signaling messages, and keeps no state beyond currently-open rooms in
 memory.
 
-Self-hostable: `npm install && npm run build && npm start`, or point the
-app's Settings screen at any instance running this. There is no default
-public instance baked into the app; you either run your own or point at one
-someone you trust runs.
+Self-hostable: `npm install && npm run build && npm start`, `docker compose up -d`
+(see `docker-compose.yml`), or point the app's Settings screen at any instance running
+this. The app defaults to `wss://wewe.hub13.xyz` (this project's own convenience
+instance, see `src/domain/store.ts`'s `DEFAULT_SIGNALING_SERVER_URL`) so it works out of
+the box, but Settings always lets you override it — run your own or point at one
+someone you trust runs instead.
 
 ## Wire protocol
 

@@ -1,0 +1,27 @@
+# Minimal — no TLS/reverse proxy here; point your own existing one at
+# 127.0.0.1:8787 (or the mapped port below) on this host. See README.md
+# "Self-hostable" for the wire protocol and why this service is stateless.
+services:
+  signal-server:
+    image: ghcr.io/grantstephens/wewe-signal-server:latest
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8787:8787"
+    environment:
+      PORT: 8787
+
+    # Uncomment for the label style your reverse proxy expects, so it picks
+    # this container up automatically instead of a manual port mapping.
+    #
+    # Traefik:
+    # labels:
+    #   - traefik.enable=true
+    #   - traefik.http.routers.wewe-signal.rule=Host(`wewe.hub13.xyz`)
+    #   - traefik.http.routers.wewe-signal.tls.certresolver=letsencrypt
+    #   - traefik.http.services.wewe-signal.loadbalancer.server.port=8787
+    #
+    # Caddy (lucaslorentz/caddy-docker-proxy):
+    # labels:
+    #   caddy: wewe.hub13.xyz
+    #   caddy.reverse_proxy: "{{upstreams 8787}}"

@@ -4,7 +4,7 @@ import { StyleSheet, View } from 'react-native';
 import { Button, List, Text, TextInput, useTheme } from 'react-native-paper';
 
 import { isValidPairingCode, parsePairingUri } from '../domain/pairing';
-import { SETTINGS_KEYS, type PairedMonitor } from '../domain/store';
+import { DEFAULT_SIGNALING_SERVER_URL, SETTINGS_KEYS, type PairedMonitor } from '../domain/store';
 import { formatTimestamp } from '../domain/timestamp';
 import type { RootStackParamList } from '../navigation';
 import { DiscoveryScanner, type DiscoveredMonitor } from '../platform/discovery';
@@ -67,11 +67,7 @@ export function AddMonitorScreen({ navigation }: Props) {
 
   const connectManually = async () => {
     if (!isValidPairingCode(manualCode)) return;
-    const relayUrl = await store.getSetting(SETTINGS_KEYS.signalingServerUrl);
-    if (!relayUrl) {
-      navigation.navigate('Settings');
-      return;
-    }
+    const relayUrl = (await store.getSetting(SETTINGS_KEYS.signalingServerUrl)) || DEFAULT_SIGNALING_SERVER_URL;
     await pairWith(manualCode, relayUrl, 'Nursery');
   };
 

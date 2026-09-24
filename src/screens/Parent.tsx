@@ -3,7 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import { Button, List, Text, useTheme } from 'react-native-paper';
 
 import { CryAlertClassifier } from '../domain/cryAlert';
-import { SETTINGS_KEYS, type PairedMonitor } from '../domain/store';
+import { DEFAULT_SIGNALING_SERVER_URL, SETTINGS_KEYS, type PairedMonitor } from '../domain/store';
 import type { ActivityEvent } from '../domain/activityLog';
 import { formatTimestamp } from '../domain/timestamp';
 import type { RootStackParamList } from '../navigation';
@@ -67,8 +67,9 @@ export function ParentScreen({ route, navigation }: Props) {
     if (!monitor) return;
     let cancelled = false;
 
-    store.getSetting(SETTINGS_KEYS.signalingServerUrl).then((relayUrl) => {
-      if (cancelled || !relayUrl) return;
+    store.getSetting(SETTINGS_KEYS.signalingServerUrl).then((value) => {
+      const relayUrl = value || DEFAULT_SIGNALING_SERVER_URL;
+      if (cancelled) return;
 
       const session = new ParentSession(
         { signalingUrl: relayUrl, pairingCode: monitor.lastPairingCode },

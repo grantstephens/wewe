@@ -59,8 +59,10 @@ needs `expo prebuild` and a dev client, not Expo Go. `npx expo run:android` afte
 
 ### Signaling server
 
-There is no default relay baked into the app — see
-[`signal-server/README.md`](signal-server/README.md). Run one locally for development:
+The app defaults to `wss://wewe.hub13.xyz`, an instance the project maintainer runs —
+see [`signal-server/README.md`](signal-server/README.md) for the wire protocol. Nothing
+requires using it: the Settings screen persists an explicit override that always wins.
+Run your own locally for development:
 
 ```bash
 cd signal-server
@@ -71,12 +73,13 @@ npm run dev
 Then set the Settings screen's relay URL to `ws://<your-machine-ip>:8787`.
 
 In production, self-host it as a container: `signal-server/Dockerfile` builds a small
-image (`docker build -t wewe-signal-server signal-server/`), and
-[`.github/workflows/docker.yml`](.github/workflows/docker.yml) publishes one to
-`ghcr.io/grantstephens/wewe-signal-server` on every push to `main` and on tags. Run it
-behind a reverse proxy that terminates TLS so the app can use `wss://` — see
-[`signal-server/README.md`](signal-server/README.md) for the wire protocol and hardening
-knobs (room TTL, per-IP rate limiting).
+image, and [`.github/workflows/docker.yml`](.github/workflows/docker.yml) publishes one
+to `ghcr.io/grantstephens/wewe-signal-server` on every push to `main` and on tags.
+`signal-server/docker-compose.yml` runs the published image directly
+(`docker compose up -d`), bound to `127.0.0.1:8787` — put your own reverse proxy in
+front to terminate TLS so the app can use `wss://` (see the compose file's commented-out
+Traefik/Caddy label examples). See [`signal-server/README.md`](signal-server/README.md)
+for the wire protocol and hardening knobs (room TTL, per-IP rate limiting).
 
 ### Releasing
 

@@ -2,7 +2,7 @@ Wewe is an audio-only baby monitor built on WebRTC. Turn one phone into the moni
 
 The Monitor phone listens on the microphone and only starts streaming when it detects sound, using a local adaptive noise gate — quiet nursery time transmits nothing. The Parent phone plays that audio live, decides whether it's worth an alert, and can talk back with push-to-talk.
 
-Audio flows directly between the two phones, encrypted end-to-end by WebRTC's own DTLS-SRTP. The only server involved is a small signaling relay that helps the two phones find each other and never sees or stores audio — self-host your own (see the project's signal-server) or point at one you trust. There is no default relay baked into the app and no vendor server of ours in the loop at all.
+Audio flows directly between the two phones, encrypted end-to-end by WebRTC's own DTLS-SRTP. The only server involved is a small signaling relay that helps the two phones find each other and never sees or stores audio. The app points at a convenience instance the developer runs by default, so it works out of the box — the source is open (see the project's signal-server), and Settings lets you self-host your own or point at one you trust instead.
 
 * Audio-only, phone-to-phone monitoring over WebRTC
 * Local noise gate — streams only when there's sound
@@ -10,4 +10,4 @@ Audio flows directly between the two phones, encrypted end-to-end by WebRTC's ow
 * Push-to-talk
 * Pairing by QR code, six-digit code, or local-network discovery
 * No account, no cloud, no ads, no analytics
-* Self-hosted signaling relay — you control it, or trust one you choose
+* Signaling relay is open-source and self-hostable, with an optional default provided

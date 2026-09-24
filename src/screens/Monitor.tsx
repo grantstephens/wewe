@@ -5,7 +5,7 @@ import QRCode from 'react-native-qrcode-svg';
 
 import { NoiseGate } from '../domain/noiseGate';
 import { generatePairingCode, pairingUri } from '../domain/pairing';
-import { SETTINGS_KEYS } from '../domain/store';
+import { DEFAULT_SIGNALING_SERVER_URL, SETTINGS_KEYS } from '../domain/store';
 import type { RootStackParamList } from '../navigation';
 import { MonitorAdvertiser } from '../platform/discovery';
 import { AndroidForegroundServiceType, startForegroundSession, stopForegroundSession } from '../platform/foregroundService';
@@ -37,11 +37,10 @@ export function MonitorScreen({ navigation }: Props) {
   const { levelDb, isReady } = useMicLevel();
 
   const [pairingCode] = React.useState(() => generatePairingCode());
-  // undefined: getSetting hasn't resolved yet. null: resolved, and it's unset
-  // (Store.getSetting's documented "never set" value) — these must stay
-  // distinguishable or this screen can't tell "still loading" from "loaded,
-  // but nothing to show" and gets stuck on the loading branch forever.
-  const [relayUrl, setRelayUrl] = React.useState<string | null | undefined>(undefined);
+  // undefined: getSetting hasn't resolved yet — kept distinguishable from an
+  // empty/unset stored value (which falls back to the default below) so
+  // this screen can tell "still loading" from "loaded, nothing configured".
+  const [relayUrl, setRelayUrl] = React.useState<string | undefined>(undefined);
   const [connectionState, setConnectionState] = React.useState('idle');
   const [reconnecting, setReconnecting] = React.useState<number | null>(null);
   const [gateOpen, setGateOpen] = React.useState(false);
@@ -51,7 +50,7 @@ export function MonitorScreen({ navigation }: Props) {
   const advertiserRef = React.useRef(new MonitorAdvertiser());
 
   React.useEffect(() => {
-    store.getSetting(SETTINGS_KEYS.signalingServerUrl).then(setRelayUrl);
+    store.getSetting(SETTINGS_KEYS.signalingServerUrl).then((value) => setRelayUrl(value || DEFAULT_SIGNALING_SERVER_URL));
   }, [store]);
 
   React.useEffect(() => {
@@ -91,19 +90,6 @@ export function MonitorScreen({ navigation }: Props) {
     return (
       <View style={[styles.container, styles.centered, { backgroundColor: theme.colors.background }]}>
         <Text>Loading…</Text>
-      </View>
-    );
-  }
-
-  if (relayUrl === null) {
-    return (
-      <View style={[styles.container, styles.centered, { backgroundColor: theme.colors.background }]}>
-        <Text variant="titleMedium" style={styles.centeredText}>
-          Set a signaling server first
-        </Text>
-        <Button mode="contained" onPress={() => navigation.navigate('Settings')} style={styles.button}>
-          Go to Settings
-        </Button>
       </View>
     );
   }

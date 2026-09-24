@@ -163,6 +163,9 @@ cry classifier to replace/augment the RMS heuristic; talk-back playback on the E
 
 ## Open items to settle before Phase 0 begins
 
-- App display name / package id / F-Droid distribution target — same as DriveWell's or new?
-- Default public signaling-relay hosting (who runs the convenience default instance).
+- ~~App display name / package id / F-Droid distribution target~~ — resolved: `Wewe` /
+  `xyz.hub13.wewe`, its own new F-Droid target (not DriveWell's).
+- ~~Default public signaling-relay hosting~~ — resolved: the project maintainer runs
+  `wss://wewe.hub13.xyz` as the app's default (`DEFAULT_SIGNALING_SERVER_URL`),
+  overridable in Settings.
 - Specific ESP32-S3 dev board + I2S mic part number to standardize the BOM against.
