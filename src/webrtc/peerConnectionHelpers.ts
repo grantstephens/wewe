@@ -23,7 +23,8 @@ export type SignalPayload =
   | { sdp: WireSdp }
   | { candidate: WireIceCandidate }
   | { rejected: true; reason: string }
-  | { inviteMode: 'open' | 'closed' };
+  | { inviteMode: 'open' | 'closed' }
+  | { inviteCode: string | null };
 
 /** True iff `payload` is the SDP half of a SignalPayload. */
 export function isSdpSignal(payload: unknown): payload is { sdp: WireSdp } {
@@ -43,6 +44,11 @@ export function isRejectedSignal(payload: unknown): payload is { rejected: true;
 /** True iff `payload` is a Parent's request to open/close the Monitor's invite mode on its behalf — only honored by MonitorSession from an already-connected (thus already-authorized) sender. */
 export function isInviteModeSignal(payload: unknown): payload is { inviteMode: 'open' | 'closed' } {
   return typeof payload === 'object' && payload !== null && 'inviteMode' in payload;
+}
+
+/** True iff `payload` is the Monitor telling a remote invite-mode holder what the currently-live pairing code is — `null` means the invite window has closed and there's nothing to show anymore. */
+export function isInviteCodeSignal(payload: unknown): payload is { inviteCode: string | null } {
+  return typeof payload === 'object' && payload !== null && 'inviteCode' in payload;
 }
 
 /**
