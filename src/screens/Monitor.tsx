@@ -4,7 +4,7 @@ import { Button, ProgressBar, Text, useTheme } from 'react-native-paper';
 import QRCode from 'react-native-qrcode-svg';
 
 import { NoiseGate } from '../domain/noiseGate';
-import { generatePairingCode, pairingUri } from '../domain/pairing';
+import { pairingUri } from '../domain/pairing';
 import { DEFAULT_SIGNALING_SERVER_URL, SETTINGS_KEYS } from '../domain/store';
 import type { RootStackParamList } from '../navigation';
 import { MonitorAdvertiser } from '../platform/discovery';
@@ -44,12 +44,14 @@ export function MonitorScreen({ navigation }: Props) {
   const { store } = useWewe();
   const { levelDb, isReady, isRecording } = useMicLevel();
 
-  // undefined: neither setting has resolved yet — kept distinguishable from
-  // an empty/unset relayUrl (which falls back to the default below) so this
+  // undefined: relayUrl hasn't resolved yet — kept distinguishable from an
+  // empty/unset value (which falls back to the default below) so this
   // screen can tell "still loading" from "loaded, nothing configured".
-  const [pairingCode, setPairingCode] = React.useState<string | undefined>(undefined);
   const [relayUrl, setRelayUrl] = React.useState<string | undefined>(undefined);
   const [listenerCount, setListenerCount] = React.useState(0);
+  const [inviteCode, setInviteCode] = React.useState<string | null>(null);
+  const [inviteExpiresAt, setInviteExpiresAt] = React.useState<number | null>(null);
+  const [secondsLeft, setSecondsLeft] = React.useState<number | null>(null);
   const [reconnecting, setReconnecting] = React.useState<number | null>(null);
   const [gateOpen, setGateOpen] = React.useState(false);
 
@@ -62,42 +64,57 @@ export function MonitorScreen({ navigation }: Props) {
   }, [store]);
 
   React.useEffect(() => {
-    store.getSetting(SETTINGS_KEYS.monitorPairingCode).then((existing) => {
-      if (existing) {
-        setPairingCode(existing);
-        return;
-      }
-      const code = generatePairingCode();
-      store.setSetting(SETTINGS_KEYS.monitorPairingCode, code).then(() => setPairingCode(code));
-    });
-  }, [store]);
-
-  React.useEffect(() => {
-    if (!relayUrl || !pairingCode) return;
+    if (!relayUrl) return;
 
     const session = new MonitorSession(
-      { signalingUrl: relayUrl, pairingCode },
+      { signalingUrl: relayUrl },
       store,
       {
         onListenerCountChange: setListenerCount,
+        onInviteCodeChange: (code, expiresAt) => {
+          setInviteCode(code);
+          setInviteExpiresAt(expiresAt);
+        },
         onSignalingReconnecting: (attempt) => setReconnecting(attempt),
         onSignalingReconnected: () => setReconnecting(null),
       },
     );
     sessionRef.current = session;
-    session.start().catch(() => {});
-    advertiserRef.current.publish(pairingCode, pairingCode);
-    // The pairing screen being open IS this device's own invite-mode
-    // holder — see InviteMode's doc comment (src/domain/inviteMode.ts).
-    session.openLocalInvite();
+    // rearmInvite() sends set-alias, which the relay only accepts once this
+    // room has actually been joined — must wait for start() to resolve.
+    session
+      .start()
+      .then(() => session.rearmInvite())
+      .catch(() => {});
 
     return () => {
       session.closeLocalInvite();
       session.stop();
-      advertiserRef.current.unpublish(pairingCode);
       stopForegroundSession().catch(() => {});
     };
-  }, [relayUrl, pairingCode, store]);
+  }, [relayUrl, store]);
+
+  // mDNS re-publishes under the current code each time it rotates — separate
+  // from the session effect above since inviteCode changes many times over
+  // one mount, not just once.
+  React.useEffect(() => {
+    if (!inviteCode) return;
+    advertiserRef.current.publish(inviteCode, inviteCode);
+    return () => advertiserRef.current.unpublish(inviteCode);
+  }, [inviteCode]);
+
+  // Ticking countdown display, independent of the session's own internal
+  // timer — this is purely a UI reflection of inviteExpiresAt.
+  React.useEffect(() => {
+    if (inviteExpiresAt === null) {
+      setSecondsLeft(null);
+      return;
+    }
+    const tick = () => setSecondsLeft(Math.max(0, Math.ceil((inviteExpiresAt - Date.now()) / 1000)));
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [inviteExpiresAt]);
 
   React.useEffect(() => {
     if (levelDb === null) return;
@@ -125,7 +142,7 @@ export function MonitorScreen({ navigation }: Props) {
     ]).catch(() => {});
   }, [isRecording]);
 
-  if (relayUrl === undefined || pairingCode === undefined) {
+  if (relayUrl === undefined) {
     return (
       <View style={[styles.container, styles.centered, { backgroundColor: theme.colors.background }]}>
         <Text>Loading…</Text>
@@ -139,15 +156,36 @@ export function MonitorScreen({ navigation }: Props) {
         This device is the monitor
       </Text>
 
-      <View style={styles.qrWrap}>
-        <QRCode value={pairingUri(pairingCode, relayUrl)} size={200} />
-      </View>
-      <Text variant="headlineMedium" style={styles.code}>
-        {pairingCode}
-      </Text>
-      <Text variant="bodyMedium" style={styles.centeredText}>
-        Scan this on the parent's phone, or enter the code by hand.
-      </Text>
+      {listenerCount > 0 && (
+        <View style={[styles.connectedBanner, { backgroundColor: theme.colors.primaryContainer }]}>
+          <Text variant="titleMedium">
+            ● Connected — {listenerCount} {listenerCount === 1 ? 'listener' : 'listeners'}
+          </Text>
+        </View>
+      )}
+
+      {inviteCode !== null ? (
+        <>
+          <View style={styles.qrWrap}>
+            <QRCode value={pairingUri(inviteCode, relayUrl)} size={200} />
+          </View>
+          <Text variant="headlineMedium" style={styles.code}>
+            {inviteCode}
+          </Text>
+          <Text variant="bodyMedium" style={styles.centeredText}>
+            Scan this on the parent's phone, or enter the code by hand. Expires in {secondsLeft ?? 0}s.
+          </Text>
+        </>
+      ) : (
+        <>
+          <Text variant="bodyMedium" style={styles.centeredText}>
+            Pairing closed — a new device can't join until you show a code again.
+          </Text>
+          <Button mode="contained" onPress={() => sessionRef.current?.rearmInvite()} style={styles.button}>
+            Show pairing code
+          </Button>
+        </>
+      )}
 
       <View style={styles.meterSection}>
         <Text variant="labelLarge">{gateOpen ? 'Streaming' : 'Quiet'}</Text>
@@ -159,7 +197,7 @@ export function MonitorScreen({ navigation }: Props) {
               ? `Reconnecting to relay (attempt ${reconnecting})…`
               : listenerCount === 0
                 ? 'No one listening yet'
-                : `${listenerCount} ${listenerCount === 1 ? 'listener' : 'listeners'} connected`}
+                : 'Streaming to every connected listener'}
         </Text>
       </View>
 
@@ -175,6 +213,7 @@ const styles = StyleSheet.create({
   centered: { justifyContent: 'center' },
   centeredText: { textAlign: 'center', marginBottom: 16 },
   title: { marginBottom: 16, textAlign: 'center' },
+  connectedBanner: { width: '100%', padding: 12, borderRadius: 12, alignItems: 'center', marginBottom: 16 },
   qrWrap: { padding: 16, backgroundColor: '#fff', borderRadius: 12, marginBottom: 16 },
   code: { letterSpacing: 4, marginBottom: 8 },
   meterSection: { width: '100%', marginTop: 24, alignItems: 'center', gap: 8 },
