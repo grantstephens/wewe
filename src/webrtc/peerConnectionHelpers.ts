@@ -24,7 +24,9 @@ export type SignalPayload =
   | { candidate: WireIceCandidate }
   | { rejected: true; reason: string }
   | { inviteMode: 'open' | 'closed' }
-  | { inviteCode: string | null };
+  | { inviteCode: string | null }
+  | { monitorName: string }
+  | { setMonitorName: string };
 
 /** True iff `payload` is the SDP half of a SignalPayload. */
 export function isSdpSignal(payload: unknown): payload is { sdp: WireSdp } {
@@ -49,6 +51,16 @@ export function isInviteModeSignal(payload: unknown): payload is { inviteMode: '
 /** True iff `payload` is the Monitor telling a remote invite-mode holder what the currently-live pairing code is — `null` means the invite window has closed and there's nothing to show anymore. */
 export function isInviteCodeSignal(payload: unknown): payload is { inviteCode: string | null } {
   return typeof payload === 'object' && payload !== null && 'inviteCode' in payload;
+}
+
+/** True iff `payload` is the Monitor telling a Parent its current display name — sent to every connected peer on accept, and re-broadcast to all of them whenever it changes. */
+export function isMonitorNameSignal(payload: unknown): payload is { monitorName: string } {
+  return typeof payload === 'object' && payload !== null && 'monitorName' in payload;
+}
+
+/** True iff `payload` is an already-connected Parent asking the Monitor to rename itself — honored only from a peer the Monitor already has a live RTCPeerConnection for. */
+export function isSetMonitorNameSignal(payload: unknown): payload is { setMonitorName: string } {
+  return typeof payload === 'object' && payload !== null && 'setMonitorName' in payload;
 }
 
 /**
