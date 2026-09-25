@@ -33,8 +33,17 @@ export function useMicLevel(): { levelDb: number | null; isReady: boolean; isRec
 
   useEffect(() => {
     let cancelled = false;
-    requestRecordingPermissionsAsync().then((permission) => {
+    requestRecordingPermissionsAsync().then(async (permission) => {
       if (cancelled || !permission.granted) return;
+      // record() is a silent no-op unless the recorder was already prepared
+      // (see AudioModule.kt: `Function("record") { ... if (recorder.isPrepared) ... }`)
+      // — skipping this call meant canRecord/isRecording stayed false and
+      // levelDb stayed null forever, a real bug confirmed live: the meter/
+      // gate section never left "Requesting microphone…" despite audio
+      // genuinely flowing over the separate WebRTC capture path, and the
+      // NoiseGate silently never engaged since its driving effect never ran.
+      await recorder.prepareToRecordAsync();
+      if (cancelled) return;
       recorder.record();
     });
     // No explicit recorder.stop() here: useAudioRecorder's own unmount effect
