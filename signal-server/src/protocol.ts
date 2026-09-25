@@ -17,11 +17,19 @@ export interface SignalMessage {
   to?: string;
 }
 
-export type ClientMessage = JoinMessage | SignalMessage;
+export interface SetAliasMessage {
+  type: 'set-alias';
+  /** A short-lived name that currently resolves to the sender's own room — see server.ts's alias map. Monitor-only. */
+  alias: string;
+}
+
+export type ClientMessage = JoinMessage | SignalMessage | SetAliasMessage;
 
 export interface JoinedMessage {
   type: 'joined';
   role: Role;
+  /** The room this join actually resolved to. Always present for role 'parent' (whether `room` on the way in was a live alias or already the real room name); never present for role 'monitor' (a Monitor always joins its own room directly — no aliasing applies to its own join). */
+  room?: string;
 }
 
 export interface PeerJoinedMessage {
@@ -52,6 +60,8 @@ export interface ServerSignalMessage {
 
 export type ServerMessage = JoinedMessage | PeerJoinedMessage | PeerLeftMessage | ErrorMessage | ServerSignalMessage;
 
+const MAX_ALIAS_LENGTH = 64;
+
 /** True iff `value` is a well-formed ClientMessage; narrows the parsed JSON before it's trusted. */
 export function isClientMessage(value: unknown): value is ClientMessage {
   if (typeof value !== 'object' || value === null || !('type' in value)) return false;
@@ -67,6 +77,10 @@ export function isClientMessage(value: unknown): value is ClientMessage {
     if (!('payload' in value)) return false;
     const s = value as Partial<SignalMessage>;
     return s.to === undefined || typeof s.to === 'string';
+  }
+  if (v.type === 'set-alias') {
+    const a = value as Partial<SetAliasMessage>;
+    return typeof a.alias === 'string' && a.alias.length > 0 && a.alias.length <= MAX_ALIAS_LENGTH;
   }
   return false;
 }

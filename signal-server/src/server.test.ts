@@ -117,7 +117,7 @@ describe('signaling relay', () => {
     const parent = await TestClient.connect(server.url);
     parent.send({ type: 'join', room: 'r1', role: 'parent', deviceId: 'dev-1' });
 
-    await expect(parent.next()).resolves.toEqual({ type: 'joined', role: 'parent' });
+    await expect(parent.next()).resolves.toEqual({ type: 'joined', role: 'parent', room: 'r1' });
     await expect(parent.next()).resolves.toEqual({ type: 'peer-joined' });
     await expect(monitor.next()).resolves.toEqual({ type: 'peer-joined', deviceId: 'dev-1' });
 
@@ -195,7 +195,7 @@ describe('signaling relay', () => {
 
     const parentB = await TestClient.connect(server.url);
     parentB.send({ type: 'join', room: 'r1', role: 'parent', deviceId: 'dev-b' });
-    await expect(parentB.next()).resolves.toEqual({ type: 'joined', role: 'parent' });
+    await expect(parentB.next()).resolves.toEqual({ type: 'joined', role: 'parent', room: 'r1' });
     await expect(parentB.next()).resolves.toEqual({ type: 'peer-joined' });
     await expect(monitor.next()).resolves.toEqual({ type: 'peer-joined', deviceId: 'dev-b' });
 
@@ -222,7 +222,7 @@ describe('signaling relay', () => {
 
     const parent2 = await TestClient.connect(server.url);
     parent2.send({ type: 'join', room: 'r1', role: 'parent', deviceId: 'dev-1' });
-    await expect(parent2.next()).resolves.toEqual({ type: 'joined', role: 'parent' });
+    await expect(parent2.next()).resolves.toEqual({ type: 'joined', role: 'parent', room: 'r1' });
     await expect(parent2.next()).resolves.toEqual({ type: 'peer-joined' });
 
     // Old socket getting superseded must not tell the monitor peer-left,
@@ -447,5 +447,99 @@ describe('per-IP join rate limiting', () => {
     await third.close();
 
     await server.close();
+  });
+});
+
+describe('pairing-code aliases', () => {
+  let server: RunningServer;
+
+  beforeEach(async () => {
+    server = await startServer();
+  });
+
+  afterEach(async () => {
+    await server.close();
+  });
+
+  test('a parent joining via a live alias resolves to the aliased room', async () => {
+    const monitor = await TestClient.connect(server.url);
+    monitor.send({ type: 'join', room: 'stable-1', role: 'monitor' });
+    await monitor.next(); // joined
+
+    monitor.send({ type: 'set-alias', alias: '482913' });
+
+    const parent = await TestClient.connect(server.url);
+    parent.send({ type: 'join', room: '482913', role: 'parent', deviceId: 'dev-1' });
+
+    await expect(parent.next()).resolves.toEqual({ type: 'joined', role: 'parent', room: 'stable-1' });
+    await expect(parent.next()).resolves.toEqual({ type: 'peer-joined' });
+    await expect(monitor.next()).resolves.toEqual({ type: 'peer-joined', deviceId: 'dev-1' });
+
+    await monitor.close();
+    await parent.close();
+  });
+
+  test('an unknown alias falls through to literal room-name behavior, same as a wrong code', async () => {
+    const parent = await TestClient.connect(server.url);
+    parent.send({ type: 'join', room: '000000', role: 'parent', deviceId: 'dev-1' });
+    await expect(parent.next()).resolves.toEqual({ type: 'joined', role: 'parent', room: '000000' });
+    await parent.close();
+  });
+
+  test('an alias expires after its TTL — a subsequent join using it no longer resolves', async () => {
+    const SHORT_ALIAS_TTL_MS = 50;
+    const shortServer = await startServer({ aliasTtlMs: SHORT_ALIAS_TTL_MS });
+
+    const monitor = await TestClient.connect(shortServer.url);
+    monitor.send({ type: 'join', room: 'stable-2', role: 'monitor' });
+    await monitor.next(); // joined
+    monitor.send({ type: 'set-alias', alias: '111111' });
+
+    await new Promise((resolve) => setTimeout(resolve, SHORT_ALIAS_TTL_MS + 20));
+
+    const parent = await TestClient.connect(shortServer.url);
+    parent.send({ type: 'join', room: '111111', role: 'parent', deviceId: 'dev-1' });
+    // No longer aliased to stable-2 — resolves to the literal (now empty) room '111111'.
+    await expect(parent.next()).resolves.toEqual({ type: 'joined', role: 'parent', room: '111111' });
+
+    await monitor.close();
+    await parent.close();
+    await shortServer.close();
+  });
+
+  test('set-alias from a parent is rejected with invalid-message', async () => {
+    const parent = await TestClient.connect(server.url);
+    parent.send({ type: 'join', room: 'r1', role: 'parent', deviceId: 'dev-1' });
+    await parent.next(); // joined
+
+    parent.send({ type: 'set-alias', alias: '482913' });
+    await expect(parent.next()).resolves.toEqual({ type: 'error', message: 'invalid-message' });
+  });
+
+  test('set-alias before joining is rejected with must-join-first', async () => {
+    const socket = await TestClient.connect(server.url);
+    socket.send({ type: 'set-alias', alias: '482913' });
+    await expect(socket.next()).resolves.toEqual({ type: 'error', message: 'must-join-first' });
+  });
+
+  test('re-registering a different alias does not disturb resolution via the previous one until it separately expires', async () => {
+    const monitor = await TestClient.connect(server.url);
+    monitor.send({ type: 'join', room: 'stable-3', role: 'monitor' });
+    await monitor.next(); // joined
+
+    monitor.send({ type: 'set-alias', alias: '222222' });
+    monitor.send({ type: 'set-alias', alias: '333333' });
+
+    const parentOld = await TestClient.connect(server.url);
+    parentOld.send({ type: 'join', room: '222222', role: 'parent', deviceId: 'dev-old' });
+    await expect(parentOld.next()).resolves.toEqual({ type: 'joined', role: 'parent', room: 'stable-3' });
+
+    const parentNew = await TestClient.connect(server.url);
+    parentNew.send({ type: 'join', room: '333333', role: 'parent', deviceId: 'dev-new' });
+    await expect(parentNew.next()).resolves.toEqual({ type: 'joined', role: 'parent', room: 'stable-3' });
+
+    await monitor.close();
+    await parentOld.close();
+    await parentNew.close();
   });
 });

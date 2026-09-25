@@ -21,26 +21,43 @@ const DEFAULT_ROOM_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_RATE_LIMIT_MAX = 20;
 const DEFAULT_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 
+/**
+ * How long a registered alias stays resolvable — see `SignalingServerOptions.aliasTtlMs`'s
+ * doc comment. Kept in sync with the app's own client-side invite-window timer
+ * (`src/webrtc/monitorSession.ts`'s `INVITE_WINDOW_MS`) by convention, not by shared
+ * code — same cross-package duplication this project already accepts for
+ * `DEFAULT_ICE_SERVERS` and the wire-protocol types themselves.
+ */
+const DEFAULT_ALIAS_TTL_MS = 60 * 1000;
+
 export interface SignalingServerOptions {
   /**
    * How long a room may have exactly one side present (a Monitor with no
    * Parents, or one-or-more Parents with no Monitor) before every occupant
-   * is disconnected with `room-expired` and the room is forgotten. Pairing
-   * codes are short (six digits — one million possibilities) and reused as
-   * the room name directly, so an attacker guessing codes could otherwise
-   * camp in a real monitor's room indefinitely. Bounding how long an
-   * unmatched room stays open bounds that exposure window without changing
-   * the pairing UX.
+   * is disconnected with `room-expired` and the room is forgotten. Rooms are
+   * now keyed by a Monitor's own persistent, unguessable room id rather than
+   * the displayed pairing code (see `SetAliasMessage`), so this bounds
+   * abandoned-room memory growth rather than brute-force exposure — that's
+   * `aliasTtlMs`'s job now.
    */
   roomTtlMs?: number;
   /**
    * Max `join` attempts one remote address may make within
    * `rateLimitWindowMs` before further attempts are rejected with
-   * `rate-limited`. Raises the cost of brute-forcing the six-digit code
+   * `rate-limited`. Raises the cost of brute-forcing the six-digit alias
    * space from "instant" to impractical for a single source.
    */
   rateLimitMax?: number;
   rateLimitWindowMs?: number;
+  /**
+   * How long a `set-alias` registration stays resolvable before a `join`
+   * using it falls through to literal (almost certainly empty) room-name
+   * behavior. This is the actual security boundary for how long a
+   * displayed pairing code can be used to find a Monitor's room — the
+   * client-side countdown UI is just a reflection of this, not the
+   * enforcement.
+   */
+  aliasTtlMs?: number;
 }
 
 function send(socket: WebSocket, message: ServerMessage): void {
@@ -83,6 +100,7 @@ class JoinRateLimiter {
  */
 export function attachSignalingServer(wss: WebSocketServer, options: SignalingServerOptions = {}): void {
   const roomTtlMs = options.roomTtlMs ?? DEFAULT_ROOM_TTL_MS;
+  const aliasTtlMs = options.aliasTtlMs ?? DEFAULT_ALIAS_TTL_MS;
   const rateLimiter = new JoinRateLimiter(
     options.rateLimitMax ?? DEFAULT_RATE_LIMIT_MAX,
     options.rateLimitWindowMs ?? DEFAULT_RATE_LIMIT_WINDOW_MS,
@@ -90,6 +108,14 @@ export function attachSignalingServer(wss: WebSocketServer, options: SignalingSe
 
   const rooms = new Map<string, Room>();
   const roomTimers = new Map<string, NodeJS.Timeout>();
+  // alias -> the real room name it currently resolves to. A Parent joining
+  // with `room` matching a live key here lands in that room instead,
+  // transparently. Cleared per-alias by its own TTL timer, never by a
+  // Monitor's own disconnect — a stale alias pointing at a since-vacated
+  // room just resolves to an empty room that behaves exactly like a
+  // wrong/expired code, so there's nothing to clean up eagerly.
+  const aliases = new Map<string, string>();
+  const aliasTimers = new Map<string, NodeJS.Timeout>();
   // Sockets that have been replaced by a same-deviceId reconnect before
   // they finished closing on their own — their close handler must not run
   // the normal room-cleanup logic, or it would delete the *new* socket's
@@ -103,6 +129,14 @@ export function attachSignalingServer(wss: WebSocketServer, options: SignalingSe
     if (timer !== undefined) {
       clearTimeout(timer);
       roomTimers.delete(roomName);
+    }
+  }
+
+  function clearAliasTimer(alias: string): void {
+    const timer = aliasTimers.get(alias);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      aliasTimers.delete(alias);
     }
   }
 
@@ -161,8 +195,12 @@ export function attachSignalingServer(wss: WebSocketServer, options: SignalingSe
           closeWithError(socket, 'rate-limited');
           return;
         }
-        const room = rooms.get(parsed.room) ?? { parents: new Map<string, WebSocket>() };
-        rooms.set(parsed.room, room);
+
+        // A Monitor always joins its own room name directly — aliasing only
+        // ever applies to a Parent's incoming `room` value.
+        const resolvedRoomName = parsed.role === 'parent' ? (aliases.get(parsed.room) ?? parsed.room) : parsed.room;
+        const room = rooms.get(resolvedRoomName) ?? { parents: new Map<string, WebSocket>() };
+        rooms.set(resolvedRoomName, room);
 
         if (parsed.role === 'monitor') {
           if (room.monitor !== undefined) {
@@ -170,9 +208,9 @@ export function attachSignalingServer(wss: WebSocketServer, options: SignalingSe
             return;
           }
           room.monitor = socket;
-          joinedRoom = parsed.room;
+          joinedRoom = resolvedRoomName;
           joinedRole = 'monitor';
-          rearmRoomTimer(parsed.room, room);
+          rearmRoomTimer(resolvedRoomName, room);
 
           send(socket, { type: 'joined', role: 'monitor' });
           for (const [deviceId, parentSocket] of room.parents) {
@@ -190,12 +228,12 @@ export function attachSignalingServer(wss: WebSocketServer, options: SignalingSe
           existing.close();
         }
         room.parents.set(deviceId, socket);
-        joinedRoom = parsed.room;
+        joinedRoom = resolvedRoomName;
         joinedRole = 'parent';
         joinedDeviceId = deviceId;
-        rearmRoomTimer(parsed.room, room);
+        rearmRoomTimer(resolvedRoomName, room);
 
-        send(socket, { type: 'joined', role: 'parent' });
+        send(socket, { type: 'joined', role: 'parent', room: resolvedRoomName });
         if (room.monitor !== undefined) {
           send(socket, { type: 'peer-joined' });
           // Only a genuinely new device needs telling the Monitor about —
@@ -204,6 +242,26 @@ export function attachSignalingServer(wss: WebSocketServer, options: SignalingSe
             send(room.monitor, { type: 'peer-joined', deviceId });
           }
         }
+        return;
+      }
+
+      if (parsed.type === 'set-alias') {
+        if (joinedRoom === null || joinedRole === null) {
+          closeWithError(socket, 'must-join-first');
+          return;
+        }
+        if (joinedRole !== 'monitor') {
+          closeWithError(socket, 'invalid-message');
+          return;
+        }
+        clearAliasTimer(parsed.alias);
+        aliases.set(parsed.alias, joinedRoom);
+        const timer = setTimeout(() => {
+          aliasTimers.delete(parsed.alias);
+          aliases.delete(parsed.alias);
+        }, aliasTtlMs);
+        timer.unref?.();
+        aliasTimers.set(parsed.alias, timer);
         return;
       }
 
