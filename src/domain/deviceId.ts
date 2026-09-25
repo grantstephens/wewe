@@ -37,3 +37,21 @@ export async function getOrCreateDeviceId(store: Store): Promise<string> {
   await store.setSetting(SETTINGS_KEYS.deviceId, id);
   return id;
 }
+
+/**
+ * Returns this Monitor install's persistent, unguessable relay room id,
+ * generating and persisting one on first use — the same shape as
+ * `getOrCreateDeviceId`, just a different settings key and a different
+ * purpose (a room a Monitor always joins directly, never a token proving
+ * "the same device as before"). Deliberately independent of `deviceId`:
+ * a device could in principle run both a Monitor session and, at some
+ * later point, pair as a Parent to a different Monitor — the two
+ * identities must never collide.
+ */
+export async function getOrCreateMonitorRoomId(store: Store): Promise<string> {
+  const existing = await store.getSetting(SETTINGS_KEYS.monitorRoomId);
+  if (existing) return existing;
+  const id = generateDeviceId();
+  await store.setSetting(SETTINGS_KEYS.monitorRoomId, id);
+  return id;
+}

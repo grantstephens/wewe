@@ -36,7 +36,7 @@ test('shows the empty state with no paired monitors', async () => {
 });
 
 test('lists a paired monitor once one exists', async () => {
-  await store.addMonitor({ id: 'm1', label: 'Nursery', lastPairingCode: '482913', addedAt: '2026-09-20T08:00:00Z' });
+  await store.addMonitor({ id: 'm1', label: 'Nursery', roomId: '482913', addedAt: '2026-09-20T08:00:00Z' });
   await renderHome(jest.fn());
   await screen.findByText('Nursery');
 });
@@ -49,7 +49,7 @@ test('tapping "Use this device as a monitor" navigates to Monitor', async () => 
 });
 
 test('tapping a paired monitor navigates to Parent with its id', async () => {
-  await store.addMonitor({ id: 'm1', label: 'Nursery', lastPairingCode: '482913', addedAt: '2026-09-20T08:00:00Z' });
+  await store.addMonitor({ id: 'm1', label: 'Nursery', roomId: '482913', addedAt: '2026-09-20T08:00:00Z' });
   const navigate = jest.fn();
   await renderHome(navigate);
   await fireEvent.press(await screen.findByText('Nursery'));

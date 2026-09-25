@@ -18,7 +18,7 @@ test('SqliteStore: a failed addMonitor leaves no trace', async () => {
         // amount of odd strings can.
         id: null as unknown as string,
         label: 'Nursery',
-        lastPairingCode: '482913',
+        roomId: '482913',
         addedAt: '2026-09-20T08:00:00Z',
       }),
     ).rejects.toThrow();

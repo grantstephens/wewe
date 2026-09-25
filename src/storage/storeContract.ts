@@ -2,7 +2,7 @@ import type { ActivityEvent } from '../domain/activityLog';
 import type { PairedMonitor, Store } from '../domain/store';
 
 function monitor(id: string, addedAt: string, label = 'Nursery'): PairedMonitor {
-  return { id, label, lastPairingCode: '482913', addedAt };
+  return { id, label, roomId: '482913', addedAt };
 }
 
 function event(id: string, monitorId: string, occurredAt: string, kind: ActivityEvent['kind'] = 'noise'): ActivityEvent {

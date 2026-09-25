@@ -3,7 +3,7 @@ import type { PairedMonitor, Store } from '../domain/store';
 import { formatTimestamp } from '../domain/timestamp';
 import type { SqlDatabase } from './sql';
 
-const MONITOR_COLUMNS = 'id, label, lastPairingCode, addedAt';
+const MONITOR_COLUMNS = 'id, label, roomId, addedAt';
 const EVENT_COLUMNS = 'id, monitorId, kind, occurredAt, detail';
 
 const PUT_MONITOR = `
@@ -11,7 +11,7 @@ const PUT_MONITOR = `
   VALUES (?, ?, ?, ?)
   ON CONFLICT(id) DO UPDATE SET
     label = excluded.label,
-    lastPairingCode = excluded.lastPairingCode
+    roomId = excluded.roomId
 `;
 
 const DEFAULT_EVENT_LIMIT = 200;
@@ -19,13 +19,13 @@ const DEFAULT_EVENT_LIMIT = 200;
 interface MonitorRow {
   id: string;
   label: string;
-  lastPairingCode: string;
+  roomId: string;
   addedAt: string;
 }
 function toMonitor(row: MonitorRow): PairedMonitor {
   // Copied field by field rather than spread: node:sqlite returns
   // null-prototype objects, and this keeps a plain one crossing the boundary.
-  return { id: row.id, label: row.label, lastPairingCode: row.lastPairingCode, addedAt: row.addedAt };
+  return { id: row.id, label: row.label, roomId: row.roomId, addedAt: row.addedAt };
 }
 
 interface EventRow {
@@ -60,7 +60,7 @@ export class SqliteStore implements Store {
       CREATE TABLE IF NOT EXISTS monitors (
         id              TEXT PRIMARY KEY NOT NULL,
         label           TEXT NOT NULL,
-        lastPairingCode TEXT NOT NULL,
+        roomId          TEXT NOT NULL,
         addedAt         TEXT NOT NULL
       );
       CREATE TABLE IF NOT EXISTS events (
@@ -84,7 +84,7 @@ export class SqliteStore implements Store {
   }
 
   async addMonitor(monitor: PairedMonitor): Promise<void> {
-    await this.db.run(PUT_MONITOR, [monitor.id, monitor.label, monitor.lastPairingCode, monitor.addedAt]);
+    await this.db.run(PUT_MONITOR, [monitor.id, monitor.label, monitor.roomId, monitor.addedAt]);
   }
 
   async monitors(): Promise<PairedMonitor[]> {

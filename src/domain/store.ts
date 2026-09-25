@@ -4,7 +4,15 @@ import type { ActivityEvent } from './activityLog';
 export interface PairedMonitor {
   id: string;
   label: string;
-  lastPairingCode: string;
+  /**
+   * The Monitor's persistent, unguessable relay room id — never a displayed
+   * pairing code. Learned from the relay's `joined` ack on first pairing
+   * (see `src/webrtc/signalingClient.ts`'s `onJoined` handler) and updated
+   * in place if it wasn't already known at record-creation time (see
+   * `AddMonitor.tsx`); every reconnect after that uses this directly,
+   * never a rotating code.
+   */
+  roomId: string;
   /** RFC3339 UTC. */
   addedAt: string;
 }
@@ -52,8 +60,9 @@ export interface Store {
 export const SETTINGS_KEYS = {
   signalingServerUrl: 'signalingServerUrl',
   noiseGateSensitivity: 'noiseGateSensitivity',
-  monitorPairingCode: 'monitorPairingCode',
   deviceId: 'deviceId',
+  /** This install's persistent, never-displayed relay room id when acting as a Monitor — see `getOrCreateMonitorRoomId`. */
+  monitorRoomId: 'monitorRoomId',
 } as const;
 
 /**
