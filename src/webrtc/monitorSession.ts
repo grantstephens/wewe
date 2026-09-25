@@ -116,7 +116,21 @@ export class MonitorSession {
         this.handleSignal(payload, from).catch(() => {});
       },
       onReconnecting: (attempt) => this.events.onSignalingReconnecting?.(attempt),
-      onReconnected: () => this.events.onSignalingReconnected?.(),
+      onReconnected: () => {
+        this.events.onSignalingReconnected?.();
+        // The relay's alias map is keyed by alias string, independent of any
+        // one socket, but a reconnect is a brand-new socket that never sent
+        // set-alias — a real, reproduced bug: after any drop (a rejected
+        // message closing the old socket, a relay restart, a network blip),
+        // the code kept counting down client-side looking completely
+        // normal, while silently never resolving to this room for anyone
+        // who joined with it after the reconnect. Re-registering the same
+        // (already-displayed, still-counting-down) code, not a new one,
+        // keeps the UI's own countdown meaningful.
+        if (this.currentCode !== null) {
+          this.signaling.setAlias(this.currentCode);
+        }
+      },
       onError: (message) => this.events.onError?.(message),
     });
   }
