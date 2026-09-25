@@ -266,7 +266,19 @@ export class MonitorSession {
       }
     };
     pc.onconnectionstatechange = () => {
-      this.events.onListenerCountChange?.(this.countConnected());
+      const count = this.countConnected();
+      this.events.onListenerCountChange?.(count);
+      // Once anyone is actually connected, stop showing the code — leaving
+      // it visible after that point is pure exposure with no upside (an
+      // already-connected listener doesn't need it, and this device's own
+      // screen or a connected Parent can always re-arm a fresh one to
+      // invite someone else). Idempotent: expireInvite() no-ops once
+      // currentCode is already null, so later connection-state churn (a
+      // second listener connecting, a flaky ICE restart) doesn't re-fire
+      // anything.
+      if (count > 0 && this.currentCode !== null) {
+        this.expireInvite();
+      }
     };
 
     this.peers.set(deviceId, { pc, iceQueue: new IceCandidateQueue() });

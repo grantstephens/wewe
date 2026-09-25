@@ -216,7 +216,9 @@ export function MonitorScreen({ navigation }: Props) {
       ) : (
         <>
           <Text variant="bodyMedium" style={styles.centeredText}>
-            Pairing closed — a new device can't join until you show a code again.
+            {listenerCount > 0
+              ? 'Pairing code hidden now that someone is listening. Show it again to invite another.'
+              : "Pairing closed — a new device can't join until you show a code again."}
           </Text>
           <Button mode="contained" onPress={() => sessionRef.current?.rearmInvite()} style={styles.button}>
             Show pairing code
