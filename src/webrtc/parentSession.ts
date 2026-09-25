@@ -5,6 +5,7 @@ import {
   handleIncomingSdp,
   IceCandidateQueue,
   isCandidateSignal,
+  isInviteCodeSignal,
   isRejectedSignal,
   isSdpSignal,
 } from './peerConnectionHelpers';
@@ -13,7 +14,8 @@ import { SignalingClient } from './signalingClient';
 
 export interface ParentSessionOptions {
   signalingUrl: string;
-  pairingCode: string;
+  /** The relay room to join — either a still-live rotating pairing code (first-time pairing) or a Monitor's stable, persistent roomId (every reconnect after that). ParentSession treats both identically; only the caller knows which kind of value this is. */
+  room: string;
   /** This install's persistent device identifier — see src/domain/deviceId.ts. Lets the Monitor recognize a reconnect versus a new device. */
   deviceId: string;
   iceServers?: RTCIceServer[];
@@ -31,6 +33,10 @@ export interface ParentSessionEvents {
   onError?: (message: string) => void;
   /** Fires when the Monitor rejects this device — not yet authorized, and invite mode wasn't open at the time. Retrying later (e.g. once someone opens invite mode) can still succeed. */
   onRejected?: (reason: string) => void;
+  /** Fires on every successful join (initial and each reconnect) with the room the relay actually resolved `options.room` to — this is how a Parent learns the Monitor's stable roomId, whether `options.room` was a live alias or already the real thing. */
+  onRoomResolved?: (room: string) => void;
+  /** Fires when the Monitor sends the currently-live pairing code after this Parent asked to invite a listener (see `setInviteMode`) — null means the invite window closed. */
+  onInviteCode?: (code: string | null) => void;
 }
 
 /**
@@ -57,7 +63,7 @@ export class ParentSession {
   async start(): Promise<void> {
     this.setupPeerConnection();
     await this.signaling.connect(
-      this.options.pairingCode,
+      this.options.room,
       'parent',
       {
         onPeerLeft: () => this.teardownPeerConnection(),
@@ -67,6 +73,9 @@ export class ParentSession {
         onReconnecting: (attempt) => this.events.onSignalingReconnecting?.(attempt),
         onReconnected: () => this.events.onSignalingReconnected?.(),
         onError: (message) => this.events.onError?.(message),
+        onJoined: (room) => {
+          if (room !== undefined) this.events.onRoomResolved?.(room);
+        },
       },
       this.options.deviceId,
     );
@@ -153,6 +162,10 @@ export class ParentSession {
   private async handleSignal(payload: unknown): Promise<void> {
     if (isRejectedSignal(payload)) {
       this.events.onRejected?.(payload.reason);
+      return;
+    }
+    if (isInviteCodeSignal(payload)) {
+      this.events.onInviteCode?.(payload.inviteCode);
       return;
     }
     const pc = this.pc ?? this.setupPeerConnection();
