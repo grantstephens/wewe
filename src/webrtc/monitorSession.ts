@@ -3,6 +3,7 @@ import type { MediaStream } from 'react-native-webrtc';
 
 import { getOrCreateMonitorRoomId } from '../domain/deviceId';
 import { decideListener, InviteMode } from '../domain/inviteMode';
+import { getOrCreateMonitorName, setMonitorName } from '../domain/monitorName';
 import { generatePairingCode } from '../domain/pairing';
 import type { Store } from '../domain/store';
 import {
@@ -10,7 +11,9 @@ import {
   IceCandidateQueue,
   isCandidateSignal,
   isInviteModeSignal,
+  isMonitorNameSignal,
   isSdpSignal,
+  isSetMonitorNameSignal,
 } from './peerConnectionHelpers';
 import { DEFAULT_ICE_SERVERS } from './rtcConfig';
 import { SignalingClient } from './signalingClient';
@@ -31,6 +34,8 @@ export interface MonitorSessionEvents {
   onSignalingReconnected?: () => void;
   /** Fires on a relay-reported error (e.g. "room-expired") or a socket-level failure. */
   onError?: (message: string) => void;
+  /** Fires once this Monitor's display name is first loaded, and again every time it changes (from this device's own screen or a connected Parent's rename request). */
+  onMonitorNameChange?: (name: string) => void;
 }
 
 /** How long a newly-armed (or re-armed) invite code stays valid before it must be explicitly re-armed. Kept in sync with signal-server's own `DEFAULT_ALIAS_TTL_MS` by convention, not shared code — see that constant's doc comment. */
@@ -76,6 +81,7 @@ export class MonitorSession {
   private currentCode: string | null = null;
   private codeExpiresAt: number | null = null;
   private inviteTimer: ReturnType<typeof setTimeout> | null = null;
+  private currentName = '';
 
   constructor(
     private readonly options: MonitorSessionOptions,
@@ -89,6 +95,8 @@ export class MonitorSession {
   async start(): Promise<void> {
     this.localStream = (await mediaDevices.getUserMedia({ audio: true })) as MediaStream;
     const roomId = await getOrCreateMonitorRoomId(this.store);
+    this.currentName = await getOrCreateMonitorName(this.store);
+    this.events.onMonitorNameChange?.(this.currentName);
 
     await this.signaling.connect(roomId, 'monitor', {
       onPeerJoined: (deviceId) => {
@@ -122,6 +130,16 @@ export class MonitorSession {
   /** Call in the pairing screen's unmount cleanup. Does not affect the code's own countdown or any other holder — see the class doc comment. */
   closeLocalInvite(): void {
     this.inviteMode.close('local');
+  }
+
+  /** Renames this Monitor — from its own screen, or internally when handleSignal accepts an authorized peer's setMonitorName request. Persists and re-broadcasts to every currently-connected peer, so both origins produce identical, indistinguishable behavior. */
+  renameSelf(name: string): void {
+    this.currentName = name;
+    setMonitorName(this.store, name).catch(() => {});
+    this.events.onMonitorNameChange?.(name);
+    for (const deviceId of this.peers.keys()) {
+      this.signaling.sendSignal({ monitorName: name }, deviceId);
+    }
   }
 
   /** Enables or disables the outgoing mic track on every connected peer without renegotiating — the local NoiseGate's hook into this session. */
@@ -199,6 +217,7 @@ export class MonitorSession {
     if (decision === 'accept-new') {
       await this.store.authorizeListener(deviceId);
     }
+    this.signaling.sendSignal({ monitorName: this.currentName }, deviceId);
     await this.createOfferFor(deviceId);
     this.events.onListenerCountChange?.(this.countConnected());
   }
@@ -242,6 +261,15 @@ export class MonitorSession {
 
   private async handleSignal(payload: unknown, from: string | undefined): Promise<void> {
     if (from === undefined) return;
+
+    if (isSetMonitorNameSignal(payload)) {
+      // Same "already-connected, thus already-authorized" guard as the
+      // inviteMode signal below — a not-yet-accepted deviceId has no entry
+      // in `peers` yet and can't rename a Monitor it was never let into.
+      if (!this.peers.has(from)) return;
+      this.renameSelf(payload.setMonitorName);
+      return;
+    }
 
     if (isInviteModeSignal(payload)) {
       // Only an already-connected (and therefore already-authorized) peer
