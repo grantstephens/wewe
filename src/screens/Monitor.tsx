@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
-import { Button, ProgressBar, Text, useTheme } from 'react-native-paper';
+import { Button, Dialog, IconButton, Portal, ProgressBar, Text, TextInput, useTheme } from 'react-native-paper';
 import QRCode from 'react-native-qrcode-svg';
 
 import { NoiseGate } from '../domain/noiseGate';
@@ -54,6 +54,9 @@ export function MonitorScreen({ navigation }: Props) {
   const [secondsLeft, setSecondsLeft] = React.useState<number | null>(null);
   const [reconnecting, setReconnecting] = React.useState<number | null>(null);
   const [gateOpen, setGateOpen] = React.useState(false);
+  const [monitorName, setMonitorName] = React.useState<string | null>(null);
+  const [renaming, setRenaming] = React.useState(false);
+  const [renameDraft, setRenameDraft] = React.useState('');
 
   const sessionRef = React.useRef<MonitorSession | null>(null);
   const gateRef = React.useRef(new NoiseGate());
@@ -75,6 +78,7 @@ export function MonitorScreen({ navigation }: Props) {
           setInviteCode(code);
           setInviteExpiresAt(expiresAt);
         },
+        onMonitorNameChange: setMonitorName,
         onSignalingReconnecting: (attempt) => setReconnecting(attempt),
         onSignalingReconnected: () => setReconnecting(null),
       },
@@ -156,6 +160,39 @@ export function MonitorScreen({ navigation }: Props) {
         This device is the monitor
       </Text>
 
+      <View style={styles.nameRow}>
+        <Text variant="titleMedium">{monitorName ?? '…'}</Text>
+        <IconButton
+          icon="pencil-outline"
+          onPress={() => {
+            setRenameDraft(monitorName ?? '');
+            setRenaming(true);
+          }}
+        />
+      </View>
+
+      <Portal>
+        <Dialog visible={renaming} onDismiss={() => setRenaming(false)}>
+          <Dialog.Title>Rename this monitor</Dialog.Title>
+          <Dialog.Content>
+            <TextInput label="Name" value={renameDraft} onChangeText={setRenameDraft} autoFocus />
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setRenaming(false)}>Cancel</Button>
+            <Button
+              onPress={() => {
+                const name = renameDraft.trim();
+                if (name) sessionRef.current?.renameSelf(name);
+                setRenaming(false);
+              }}
+              disabled={!renameDraft.trim()}
+            >
+              Save
+            </Button>
+          </Dialog.Actions>
+        </Dialog>
+      </Portal>
+
       {listenerCount > 0 && (
         <View style={[styles.connectedBanner, { backgroundColor: theme.colors.primaryContainer }]}>
           <Text variant="titleMedium">
@@ -213,6 +250,7 @@ const styles = StyleSheet.create({
   centered: { justifyContent: 'center' },
   centeredText: { textAlign: 'center', marginBottom: 16 },
   title: { marginBottom: 16, textAlign: 'center' },
+  nameRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
   connectedBanner: { width: '100%', padding: 12, borderRadius: 12, alignItems: 'center', marginBottom: 16 },
   qrWrap: { padding: 16, backgroundColor: '#fff', borderRadius: 12, marginBottom: 16 },
   code: { letterSpacing: 4, marginBottom: 8 },
