@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
-import { Button, Dialog, IconButton, Portal, ProgressBar, Text, TextInput, useTheme } from 'react-native-paper';
+import { Button, Chip, Dialog, IconButton, Portal, ProgressBar, Surface, Text, TextInput, useTheme } from 'react-native-paper';
 import QRCode from 'react-native-qrcode-svg';
 
 import { NoiseGate } from '../domain/noiseGate';
@@ -156,14 +156,17 @@ export function MonitorScreen({ navigation }: Props) {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <Text variant="titleLarge" style={styles.title}>
-        This device is the monitor
+      <Text variant="labelLarge" style={[styles.eyebrow, { color: theme.colors.primary }]}>
+        THIS DEVICE IS THE MONITOR
       </Text>
 
       <View style={styles.nameRow}>
-        <Text variant="titleMedium">{monitorName ?? '…'}</Text>
+        <Text variant="headlineSmall" style={styles.nameText}>
+          {monitorName ?? '…'}
+        </Text>
         <IconButton
           icon="pencil-outline"
+          mode="contained-tonal"
           onPress={() => {
             setRenameDraft(monitorName ?? '');
             setRenaming(true);
@@ -194,15 +197,19 @@ export function MonitorScreen({ navigation }: Props) {
       </Portal>
 
       {listenerCount > 0 && (
-        <View style={[styles.connectedBanner, { backgroundColor: theme.colors.primaryContainer }]}>
-          <Text variant="titleMedium">
-            ● Connected — {listenerCount} {listenerCount === 1 ? 'listener' : 'listeners'}
-          </Text>
-        </View>
+        <Surface style={[styles.connectedBanner, { backgroundColor: theme.colors.primaryContainer }]} elevation={0}>
+          <Chip
+            icon="account-check"
+            style={styles.transparentChip}
+            textStyle={[styles.connectedChipText, { color: theme.colors.onPrimaryContainer }]}
+          >
+            Connected — {listenerCount} {listenerCount === 1 ? 'listener' : 'listeners'}
+          </Chip>
+        </Surface>
       )}
 
       {inviteCode !== null ? (
-        <>
+        <Surface style={styles.qrSurface} elevation={1}>
           <View style={styles.qrWrap}>
             <QRCode value={pairingUri(inviteCode, relayUrl)} size={200} />
           </View>
@@ -210,26 +217,43 @@ export function MonitorScreen({ navigation }: Props) {
             {inviteCode}
           </Text>
           <Text variant="bodyMedium" style={styles.centeredText}>
-            Scan this on the parent's phone, or enter the code by hand. Expires in {secondsLeft ?? 0}s.
+            Scan this on the parent's phone, or enter the code by hand.
           </Text>
-        </>
+          <Chip icon="timer-outline" compact style={styles.timerChip}>
+            Expires in {secondsLeft ?? 0}s
+          </Chip>
+        </Surface>
       ) : (
-        <>
+        <View style={styles.closedWrap}>
           <Text variant="bodyMedium" style={styles.centeredText}>
             {listenerCount > 0
               ? 'Pairing code hidden now that someone is listening. Show it again to invite another.'
               : "Pairing closed — a new device can't join until you show a code again."}
           </Text>
-          <Button mode="contained" onPress={() => sessionRef.current?.rearmInvite()} style={styles.button}>
+          <Button
+            mode="contained"
+            icon="qrcode"
+            onPress={() => sessionRef.current?.rearmInvite()}
+            style={styles.primaryButton}
+            contentStyle={styles.primaryButtonContent}
+            labelStyle={styles.primaryButtonLabel}
+          >
             Show pairing code
           </Button>
-        </>
+        </View>
       )}
 
-      <View style={styles.meterSection}>
-        <Text variant="labelLarge">{gateOpen ? 'Streaming' : 'Quiet'}</Text>
+      <Surface style={styles.meterSection} elevation={1}>
+        <Chip
+          icon={gateOpen ? 'waveform' : 'volume-off'}
+          compact
+          style={[styles.gateChip, { backgroundColor: gateOpen ? theme.colors.tertiaryContainer : theme.colors.surfaceVariant }]}
+          textStyle={{ color: gateOpen ? theme.colors.onTertiaryContainer : theme.colors.onSurfaceVariant, fontWeight: '700' }}
+        >
+          {gateOpen ? 'Streaming' : 'Quiet'}
+        </Chip>
         <ProgressBar progress={levelDb === null ? 0 : levelToFraction(levelDb)} style={styles.meter} />
-        <Text variant="bodySmall">
+        <Text variant="bodyMedium" style={styles.meterStatus}>
           {!isReady
             ? 'Requesting microphone…'
             : reconnecting !== null
@@ -238,9 +262,14 @@ export function MonitorScreen({ navigation }: Props) {
                 ? 'No one listening yet'
                 : 'Streaming to every connected listener'}
         </Text>
-      </View>
+      </Surface>
 
-      <Button mode="outlined" onPress={() => navigation.goBack()} style={styles.button}>
+      <Button
+        mode="outlined"
+        onPress={() => navigation.goBack()}
+        style={styles.secondaryButton}
+        contentStyle={styles.secondaryButtonContent}
+      >
         Stop monitoring
       </Button>
     </View>
@@ -250,13 +279,25 @@ export function MonitorScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 24, alignItems: 'center' },
   centered: { justifyContent: 'center' },
-  centeredText: { textAlign: 'center', marginBottom: 16 },
-  title: { marginBottom: 16, textAlign: 'center' },
-  nameRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-  connectedBanner: { width: '100%', padding: 12, borderRadius: 12, alignItems: 'center', marginBottom: 16 },
+  centeredText: { textAlign: 'center', marginBottom: 12 },
+  eyebrow: { marginBottom: 4, letterSpacing: 1 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: 20 },
+  nameText: { fontWeight: '700' },
+  connectedBanner: { width: '100%', padding: 14, borderRadius: 16, alignItems: 'center', marginBottom: 20 },
+  transparentChip: { backgroundColor: 'transparent' },
+  connectedChipText: { fontSize: 16, fontWeight: '700' },
+  qrSurface: { width: '100%', padding: 20, borderRadius: 20, alignItems: 'center', marginBottom: 20 },
+  closedWrap: { width: '100%', alignItems: 'center', marginBottom: 20 },
   qrWrap: { padding: 16, backgroundColor: '#fff', borderRadius: 12, marginBottom: 16 },
-  code: { letterSpacing: 4, marginBottom: 8 },
-  meterSection: { width: '100%', marginTop: 24, alignItems: 'center', gap: 8 },
-  meter: { width: '100%', height: 12, borderRadius: 6 },
-  button: { marginTop: 24 },
+  code: { letterSpacing: 6, marginBottom: 8, fontWeight: '700' },
+  timerChip: { marginTop: 4 },
+  meterSection: { width: '100%', marginTop: 4, marginBottom: 20, padding: 20, borderRadius: 20, alignItems: 'center', gap: 12 },
+  gateChip: { marginBottom: 4 },
+  meter: { width: '100%', height: 14, borderRadius: 7 },
+  meterStatus: { textAlign: 'center' },
+  primaryButton: { borderRadius: 12, width: '100%' },
+  primaryButtonContent: { paddingVertical: 6 },
+  primaryButtonLabel: { fontSize: 16, fontWeight: '600' },
+  secondaryButton: { borderRadius: 12, width: '100%' },
+  secondaryButtonContent: { paddingVertical: 4 },
 });

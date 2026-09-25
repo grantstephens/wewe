@@ -6,6 +6,7 @@ import { Button, Dialog, IconButton, List, Portal, Text, TextInput, useTheme } f
 import { useParentSessions } from '../ParentSessionsContext';
 import type { PairedMonitor } from '../domain/store';
 import type { RootStackParamList } from '../navigation';
+import type { Theme } from '../theme';
 import { useWewe } from '../WeweContext';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
@@ -18,6 +19,15 @@ function statusText(monitorId: string, states: ReturnType<typeof useParentSessio
   if (state.connectionState === 'connected') return 'Connected';
   if (state.connectTimedOut) return "Couldn't reach this monitor";
   return 'Connecting…';
+}
+
+/** The status color role — connected reads as the "good" state, a rejection/timeout as the "needs attention" state, everything else neutral. Real MD3 semantic roles, not bespoke colors. */
+function statusColor(monitorId: string, states: ReturnType<typeof useParentSessions>['states'], theme: Theme): string {
+  const state = states.get(monitorId);
+  if (!state) return theme.colors.onSurfaceVariant;
+  if (state.rejected !== null || state.connectTimedOut) return theme.colors.error;
+  if (state.connectionState === 'connected') return theme.colors.primary;
+  return theme.colors.onSurfaceVariant;
 }
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
@@ -69,7 +79,7 @@ export function HomeScreen({ navigation }: Props) {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <Text variant="titleLarge" style={styles.title}>
+      <Text variant="headlineMedium" style={styles.title}>
         Wewe
       </Text>
       <FlatList
@@ -84,8 +94,14 @@ export function HomeScreen({ navigation }: Props) {
         renderItem={({ item }) => (
           <List.Item
             title={item.label}
-            description={statusText(item.id, states)}
-            left={(props) => <List.Icon {...props} icon="baby-face-outline" />}
+            titleStyle={styles.itemTitle}
+            description={() => (
+              <Text variant="bodyMedium" style={{ color: statusColor(item.id, states, theme) }}>
+                {statusText(item.id, states)}
+              </Text>
+            )}
+            style={styles.item}
+            left={(props) => <List.Icon {...props} icon="baby-face-outline" color={statusColor(item.id, states, theme)} />}
             right={() => (
               <View style={styles.itemActions}>
                 <IconButton icon="pencil-outline" onPress={() => startRename(item)} />
@@ -116,7 +132,9 @@ export function HomeScreen({ navigation }: Props) {
           mode="contained"
           icon={({ color, size }) => <MaterialCommunityIcons name="microphone" color={color} size={size} />}
           onPress={() => navigation.navigate('Monitor')}
-          style={styles.button}
+          style={styles.primaryButton}
+          contentStyle={styles.primaryButtonContent}
+          labelStyle={styles.primaryButtonLabel}
         >
           Use this device as a monitor
         </Button>
@@ -124,7 +142,8 @@ export function HomeScreen({ navigation }: Props) {
           mode="outlined"
           icon={({ color, size }) => <MaterialCommunityIcons name="qrcode-scan" color={color} size={size} />}
           onPress={() => navigation.navigate('AddMonitor')}
-          style={styles.button}
+          style={styles.primaryButton}
+          contentStyle={styles.primaryButtonContent}
         >
           Add a monitor
         </Button>
@@ -138,10 +157,15 @@ export function HomeScreen({ navigation }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 24 },
-  title: { marginBottom: 16 },
+  title: { marginBottom: 20, fontWeight: '700' },
   list: { flex: 1 },
   empty: { marginTop: 32, textAlign: 'center' },
+  item: { paddingVertical: 4 },
+  itemTitle: { fontWeight: '600' },
   itemActions: { flexDirection: 'row' },
-  actions: { gap: 12, marginTop: 16 },
+  actions: { gap: 12, marginTop: 20 },
   button: {},
+  primaryButton: { borderRadius: 12 },
+  primaryButtonContent: { paddingVertical: 6 },
+  primaryButtonLabel: { fontSize: 16, fontWeight: '600' },
 });
