@@ -66,6 +66,18 @@ export function ParentScreen({ route, navigation }: Props) {
   const sessionRef = React.useRef<ParentSession | null>(null);
   const classifierRef = React.useRef(new CryAlertClassifier());
   const wasConnectedRef = React.useRef(false);
+  // Mirrors `talking`, but updated synchronously — `toggleTalk` is async and
+  // `talking` (React state) doesn't flip until after `startTalking()`'s
+  // `await getUserMedia()` resolves, so a quick tap fires onPressIn then
+  // onPressOut before that state update lands and both branches read the
+  // same stale `talking`. That double-invoked `startTalking()` was a real,
+  // reproduced crash: two concurrent addTrack+createOffer calls on the same
+  // RTCPeerConnection produced two conflicting offers ("the order of
+  // m-lines in subsequent offer doesn't match order from previous
+  // offer/answer"). This ref is checked and flipped before anything async
+  // happens, so the second of two near-simultaneous calls always sees the
+  // already-updated value.
+  const talkingRef = React.useRef(false);
 
   const refreshEvents = React.useCallback(() => {
     store.events(monitorId).then(setEvents);
@@ -163,7 +175,8 @@ export function ParentScreen({ route, navigation }: Props) {
   }, [monitor, logEvent]);
 
   const toggleTalk = async () => {
-    if (talking) {
+    if (talkingRef.current) {
+      talkingRef.current = false;
       sessionRef.current?.stopTalking();
       setTalking(false);
       // Downgrade back to MEDIA_PLAYBACK-only now that the mic is no longer
@@ -173,6 +186,7 @@ export function ParentScreen({ route, navigation }: Props) {
         AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
       ]).catch(() => {});
     } else {
+      talkingRef.current = true;
       // startTalking() awaits getUserMedia — the mic is genuinely active by
       // the time this resolves, satisfying Android's eligibility check for
       // adding MICROPHONE to the running foreground service.
