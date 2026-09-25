@@ -77,10 +77,18 @@ Layered, dependencies pointing inward, same convention as DriveWell.
   enough to run on an ESP32 eventually, while alert sensitivity is something a parent
   should be able to tune (or a future ML classifier replace) without re-flashing
   firmware. Don't collapse these into one component.
-- **`NoiseGate`'s adaptive floor never updates while the gate is open.** If it did, a
-  sustained loud event would raise the floor to meet itself and the gate would decide
-  the room simply got louder — see the class doc comment. Any change to the gating
-  algorithm must preserve this property.
+- **`NoiseGate`'s adaptive floor's EMA never updates while the gate is open.** If it
+  did, a sustained loud event would raise the floor to meet itself and the gate would
+  decide the room simply got louder — see the class doc comment. The one deliberate
+  exception is the *stationary noise* classifier (also in `noiseGate.ts`): if the level
+  holds within `stationaryRangeDb` for a continuous `stationaryHoldMs` (defaults 3dB /
+  15s) while open, the floor snaps up once to that level and the gate closes — this is
+  how a white-noise machine plays through briefly and then gets filtered out. It
+  doesn't reopen the masking hole the EMA-freeze exists to close: any dip or wider
+  swing resets the window, so a modulating cry (breathing gaps, pitch/volume changes)
+  never qualifies no matter how long it runs. Any change to the gating algorithm must
+  preserve both properties — the frozen EMA and the reset-on-any-variation
+  stationarity window.
 - **Either WebRTC side can send a fresh SDP offer at any time** — `handleIncomingSdp` in
   `peerConnectionHelpers.ts` decides what an incoming description means from its `type`
   (`offer` → answer it; `answer` → just apply it), not from which side historically
