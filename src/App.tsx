@@ -19,6 +19,7 @@ import { SettingsScreen } from './screens/Settings';
 import { openStore } from './storage/openStore';
 import { darkTheme, lightTheme, type Theme } from './theme';
 import type { Store } from './domain/store';
+import { ParentSessionsProvider } from './ParentSessionsContext';
 import { WeweProvider } from './WeweContext';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -73,15 +74,17 @@ export default function App() {
       ) : (
         <SafeAreaProvider>
           <WeweProvider store={store}>
-            <NavigationContainer theme={navTheme}>
-              <Stack.Navigator screenOptions={{ headerShown: true }}>
-                <Stack.Screen name="Home" component={HomeScreen} options={{ title: 'Wewe' }} />
-                <Stack.Screen name="Monitor" component={MonitorScreen} options={{ title: 'Monitor' }} />
-                <Stack.Screen name="Parent" component={ParentScreen} options={{ title: 'Watching' }} />
-                <Stack.Screen name="AddMonitor" component={AddMonitorScreen} options={{ title: 'Add a monitor' }} />
-                <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings' }} />
-              </Stack.Navigator>
-            </NavigationContainer>
+            <ParentSessionsProvider>
+              <NavigationContainer theme={navTheme}>
+                <Stack.Navigator screenOptions={{ headerShown: true }}>
+                  <Stack.Screen name="Home" component={HomeScreen} options={{ title: 'Wewe' }} />
+                  <Stack.Screen name="Monitor" component={MonitorScreen} options={{ title: 'Monitor' }} />
+                  <Stack.Screen name="Parent" component={ParentScreen} options={{ title: 'Watching' }} />
+                  <Stack.Screen name="AddMonitor" component={AddMonitorScreen} options={{ title: 'Add a monitor' }} />
+                  <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings' }} />
+                </Stack.Navigator>
+              </NavigationContainer>
+            </ParentSessionsProvider>
           </WeweProvider>
         </SafeAreaProvider>
       )}
