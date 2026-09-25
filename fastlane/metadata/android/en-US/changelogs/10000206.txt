@@ -1,0 +1,16 @@
+* Monitors now get an auto-generated, editable name (e.g. "raring-rabbit"),
+  shown on every Parent device connected to them — rename from either side and
+  it syncs.
+* A single Parent device can now watch multiple monitors at once, auto-
+  connecting to every paired monitor on app open; Home is now a live status
+  dashboard and Parent is a detail view per monitor.
+* Pairing codes are now short-lived and rotate automatically, only shown to
+  whichever side started the invite, and hidden again once someone connects.
+* A connected Parent can invite another listener without leaving the app.
+* The noise gate now filters out sustained, unchanging background noise (a
+  white-noise machine, a fan) after playing through it briefly, while crying
+  or talking — which varies — still gets caught and streamed.
+* Visual polish pass across Home, Monitor, and Parent (Material You styling,
+  clearer connection/listening status).
+* Fixed foreground-service crashes on real devices that could kill the
+  Monitor's mic capture or the Parent's session while backgrounded.
