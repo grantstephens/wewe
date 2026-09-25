@@ -4,14 +4,17 @@
 <meta charset="utf-8" />
 <title>Wewe test Parent</title>
 <style>
-  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
+  body { font-family: system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
   label { display: block; margin: 0.5rem 0 0.25rem; font-size: 0.9rem; color: #333; }
   input { font-size: 1rem; padding: 0.4rem; width: 100%; box-sizing: border-box; }
   button { font-size: 1rem; padding: 0.5rem 1rem; margin: 0.5rem 0.5rem 0.5rem 0; cursor: pointer; }
   button:disabled { cursor: default; opacity: 0.5; }
-  #status { font-weight: bold; }
+  .status { font-weight: bold; }
   #log { background: #111; color: #0f0; font-family: ui-monospace, monospace; font-size: 0.8rem; padding: 0.75rem; height: 260px; overflow-y: auto; white-space: pre-wrap; }
   #deviceId { font-family: ui-monospace, monospace; }
+  #panels { display: flex; flex-wrap: wrap; gap: 1rem; }
+  .panel { border: 1px solid #ccc; border-radius: 8px; padding: 1rem; flex: 1 1 260px; min-width: 240px; }
+  .panel h3 { margin-top: 0; }
 </style>
 </head>
 <body>
@@ -27,25 +30,28 @@
   <code>sessionStorage</code> so it survives a reload but not a closed tab) to
   stand in for extra phones.
 </p>
+<p>
+  Each tab now holds one shared identity but can connect to <strong>several
+  monitors at once</strong>, one panel per room — mirroring how the real app's
+  <code>ParentSessionsProvider</code> works (one <code>deviceId</code>, many
+  simultaneous sessions). Add a panel per Monitor you want this tab to watch
+  at the same time; every panel's audio plays independently, so you can
+  confirm two monitors' audio genuinely mixes rather than one displacing the
+  other.
+</p>
 
-<label for="relayUrl">Relay URL</label>
+<label for="relayUrl">Relay URL (shared by every panel)</label>
 <input id="relayUrl" value="wss://wewe-api.hub13.xyz" />
 
-<label for="code">Pairing code</label>
-<input id="code" placeholder="482913" />
-
-<button id="connectBtn">Connect</button>
-<button id="disconnectBtn" disabled>Disconnect</button>
-<button id="inviteBtn" disabled>Invite a listener</button>
-
-<p>deviceId (this tab): <code id="deviceId"></code>
+<p>deviceId (this tab, shared by every panel): <code id="deviceId"></code>
   <button id="newDeviceBtn">New device</button>
 </p>
 
-<p>Status: <span id="status">idle</span></p>
+<button id="addPanelBtn">+ Add monitor connection</button>
 
-<audio id="remoteAudio" autoplay></audio>
+<div id="panels"></div>
 
+<h3>Log (every panel, prefixed by room)</h3>
 <pre id="log"></pre>
 
 <script>
@@ -58,10 +64,10 @@
 
   const $ = (id) => document.getElementById(id);
 
-  function log(msg) {
+  function log(label, msg) {
     const el = $('log');
     const time = new Date().toLocaleTimeString();
-    el.textContent += `[${time}] ${msg}\n`;
+    el.textContent += `[${time}] [${label}] ${msg}\n`;
     el.scrollTop = el.scrollHeight;
   }
 
@@ -75,6 +81,8 @@
   // tab you open is automatically a distinct "device" with no setup, the
   // same way two real phones would never share an install. Reloading a tab
   // keeps its deviceId (so a reconnect test works); closing it drops it.
+  // Shared by every panel in this tab, exactly like the real app's single
+  // getOrCreateDeviceId call shared across every ParentSession.
   function getDeviceId() {
     let id = sessionStorage.getItem(DEVICE_ID_KEY);
     if (!id) {
@@ -91,137 +99,183 @@
     sessionStorage.removeItem(DEVICE_ID_KEY);
     deviceId = getDeviceId();
     $('deviceId').textContent = deviceId;
-    log('Generated a new deviceId — this tab now looks like a never-before-seen device.');
+    log('device', 'Generated a new deviceId — this tab now looks like a never-before-seen device. Existing panels keep using whatever deviceId they already joined with.');
   });
-
-  let ws = null;
-  let pc = null;
-  let iceQueue = [];
-  let remoteDescriptionSet = false;
-  let inviting = false;
 
   // Mirrors src/webrtc/peerConnectionHelpers.ts's guards.
   function isSdpSignal(p) { return p !== null && typeof p === 'object' && 'sdp' in p; }
   function isCandidateSignal(p) { return p !== null && typeof p === 'object' && 'candidate' in p; }
   function isRejectedSignal(p) { return p !== null && typeof p === 'object' && 'rejected' in p; }
 
-  function sendSignal(payload) {
-    ws.send(JSON.stringify({ type: 'signal', payload }));
-  }
+  let panelCount = 0;
 
-  function setupPeerConnection() {
-    pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-    iceQueue = [];
-    remoteDescriptionSet = false;
-    pc.onicecandidate = (event) => {
-      if (event.candidate) sendSignal({ candidate: event.candidate.toJSON() });
-    };
-    pc.onconnectionstatechange = () => {
-      log('RTCPeerConnection state: ' + pc.connectionState);
-      $('status').textContent = pc.connectionState;
-    };
-    pc.ontrack = (event) => {
-      log('Receiving remote audio.');
-      $('remoteAudio').srcObject = event.streams[0];
-    };
-    return pc;
-  }
+  function addPanel() {
+    panelCount += 1;
+    const n = panelCount;
+    const label = `Room ${n}`;
 
-  // Mirrors src/webrtc/peerConnectionHelpers.ts's handleIncomingSdp: an
-  // offer is always answered, an answer never is, decided by sdp.type.
-  async function handleIncomingSdp(sdp) {
-    await pc.setRemoteDescription(new RTCSessionDescription(sdp));
-    remoteDescriptionSet = true;
-    for (const candidate of iceQueue) await pc.addIceCandidate(new RTCIceCandidate(candidate));
-    iceQueue = [];
-    if (sdp.type === 'offer') {
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      sendSignal({ sdp: { sdp: answer.sdp, type: answer.type } });
+    const container = document.createElement('div');
+    container.className = 'panel';
+    container.innerHTML = `
+      <h3>${label} <button data-role="remove">Remove</button></h3>
+      <label>Pairing code</label>
+      <input data-role="code" placeholder="482913" />
+      <button data-role="connect">Connect</button>
+      <button data-role="disconnect" disabled>Disconnect</button>
+      <button data-role="invite" disabled>Invite a listener</button>
+      <p>Status: <span class="status" data-role="status">idle</span></p>
+      <audio data-role="audio" autoplay></audio>
+    `;
+    $('panels').appendChild(container);
+
+    const codeInput = container.querySelector('[data-role="code"]');
+    const connectBtn = container.querySelector('[data-role="connect"]');
+    const disconnectBtn = container.querySelector('[data-role="disconnect"]');
+    const inviteBtn = container.querySelector('[data-role="invite"]');
+    const statusEl = container.querySelector('[data-role="status"]');
+    const audioEl = container.querySelector('[data-role="audio"]');
+    const removeBtn = container.querySelector('[data-role="remove"]');
+
+    let ws = null;
+    let pc = null;
+    let iceQueue = [];
+    let remoteDescriptionSet = false;
+    let inviting = false;
+
+    function setStatus(text) {
+      statusEl.textContent = text;
     }
-  }
 
-  async function handleSignal(payload) {
-    if (isRejectedSignal(payload)) {
-      log('REJECTED by monitor: ' + payload.reason);
-      $('status').textContent = 'rejected — ' + payload.reason;
-      return;
+    function sendSignal(payload) {
+      ws.send(JSON.stringify({ type: 'signal', payload }));
     }
-    if (!pc) setupPeerConnection();
-    if (isSdpSignal(payload)) {
-      await handleIncomingSdp(payload.sdp);
-    } else if (isCandidateSignal(payload)) {
-      if (remoteDescriptionSet) {
-        await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
-      } else {
-        iceQueue.push(payload.candidate);
+
+    function setupPeerConnection() {
+      pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+      iceQueue = [];
+      remoteDescriptionSet = false;
+      pc.onicecandidate = (event) => {
+        if (event.candidate) sendSignal({ candidate: event.candidate.toJSON() });
+      };
+      pc.onconnectionstatechange = () => {
+        log(label, 'RTCPeerConnection state: ' + pc.connectionState);
+        setStatus(pc.connectionState);
+      };
+      pc.ontrack = (event) => {
+        log(label, 'Receiving remote audio.');
+        audioEl.srcObject = event.streams[0];
+      };
+      return pc;
+    }
+
+    // Mirrors src/webrtc/peerConnectionHelpers.ts's handleIncomingSdp: an
+    // offer is always answered, an answer never is, decided by sdp.type.
+    async function handleIncomingSdp(sdp) {
+      await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+      remoteDescriptionSet = true;
+      for (const candidate of iceQueue) await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      iceQueue = [];
+      if (sdp.type === 'offer') {
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        sendSignal({ sdp: { sdp: answer.sdp, type: answer.type } });
       }
     }
-  }
 
-  $('connectBtn').addEventListener('click', () => {
-    const url = $('relayUrl').value.trim();
-    const code = $('code').value.trim();
-    if (!url || !code) {
-      log('Need a relay URL and a pairing code.');
-      return;
+    async function handleSignal(payload) {
+      if (isRejectedSignal(payload)) {
+        log(label, 'REJECTED by monitor: ' + payload.reason);
+        setStatus('rejected — ' + payload.reason);
+        return;
+      }
+      if (!pc) setupPeerConnection();
+      if (isSdpSignal(payload)) {
+        await handleIncomingSdp(payload.sdp);
+      } else if (isCandidateSignal(payload)) {
+        if (remoteDescriptionSet) {
+          await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
+        } else {
+          iceQueue.push(payload.candidate);
+        }
+      }
     }
 
-    ws = new WebSocket(url);
-    ws.onopen = () => {
-      log(`WebSocket open, joining room ${code} as parent (deviceId ${deviceId})`);
-      ws.send(JSON.stringify({ type: 'join', room: code, role: 'parent', deviceId }));
-    };
-    ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-      switch (msg.type) {
-        case 'joined':
-          log('Joined room as ' + msg.role);
-          $('status').textContent = 'joined, waiting for monitor';
-          $('inviteBtn').disabled = false;
-          $('connectBtn').disabled = true;
-          $('disconnectBtn').disabled = false;
-          break;
-        case 'peer-joined':
-          log('Monitor is present.');
-          $('status').textContent = 'monitor connected';
-          break;
-        case 'peer-left':
-          log('Monitor left.');
-          $('status').textContent = 'monitor disconnected';
-          if (pc) { pc.close(); pc = null; }
-          break;
-        case 'signal':
-          handleSignal(msg.payload).catch((err) => log('signal handling error: ' + err));
-          break;
-        case 'error':
-          log('Relay error: ' + msg.message);
-          $('status').textContent = 'error: ' + msg.message;
-          break;
+    connectBtn.addEventListener('click', () => {
+      const url = $('relayUrl').value.trim();
+      const code = codeInput.value.trim();
+      if (!url || !code) {
+        log(label, 'Need a relay URL and a pairing code.');
+        return;
       }
-    };
-    ws.onerror = () => log('WebSocket error.');
-    ws.onclose = () => {
-      log('WebSocket closed.');
-      $('status').textContent = 'disconnected';
-      $('connectBtn').disabled = false;
-      $('disconnectBtn').disabled = true;
-      $('inviteBtn').disabled = true;
+
+      ws = new WebSocket(url);
+      ws.onopen = () => {
+        log(label, `WebSocket open, joining room ${code} as parent (deviceId ${deviceId})`);
+        ws.send(JSON.stringify({ type: 'join', room: code, role: 'parent', deviceId }));
+      };
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        switch (msg.type) {
+          case 'joined':
+            log(label, 'Joined room as ' + msg.role);
+            setStatus('joined, waiting for monitor');
+            inviteBtn.disabled = false;
+            connectBtn.disabled = true;
+            disconnectBtn.disabled = false;
+            break;
+          case 'peer-joined':
+            log(label, 'Monitor is present.');
+            setStatus('monitor connected');
+            break;
+          case 'peer-left':
+            log(label, 'Monitor left.');
+            setStatus('monitor disconnected');
+            if (pc) { pc.close(); pc = null; }
+            break;
+          case 'signal':
+            handleSignal(msg.payload).catch((err) => log(label, 'signal handling error: ' + err));
+            break;
+          case 'error':
+            log(label, 'Relay error: ' + msg.message);
+            setStatus('error: ' + msg.message);
+            break;
+        }
+      };
+      ws.onerror = () => log(label, 'WebSocket error.');
+      ws.onclose = () => {
+        log(label, 'WebSocket closed.');
+        setStatus('disconnected');
+        connectBtn.disabled = false;
+        disconnectBtn.disabled = true;
+        inviteBtn.disabled = true;
+        if (pc) { pc.close(); pc = null; }
+      };
+    });
+
+    disconnectBtn.addEventListener('click', () => {
       if (pc) { pc.close(); pc = null; }
-    };
-  });
+      if (ws) ws.close();
+    });
 
-  $('disconnectBtn').addEventListener('click', () => {
-    if (pc) { pc.close(); pc = null; }
-    if (ws) ws.close();
-  });
+    inviteBtn.addEventListener('click', () => {
+      inviting = !inviting;
+      sendSignal({ inviteMode: inviting ? 'open' : 'closed' });
+      inviteBtn.textContent = inviting ? 'Stop inviting' : 'Invite a listener';
+      log(label, 'Invite mode: ' + (inviting ? 'open' : 'closed'));
+    });
 
-  $('inviteBtn').addEventListener('click', () => {
-    inviting = !inviting;
-    sendSignal({ inviteMode: inviting ? 'open' : 'closed' });
-    $('inviteBtn').textContent = inviting ? 'Stop inviting' : 'Invite a listener';
-    log('Invite mode: ' + (inviting ? 'open' : 'closed'));
-  });
+    removeBtn.addEventListener('click', () => {
+      if (pc) { pc.close(); pc = null; }
+      if (ws) ws.close();
+      container.remove();
+      log(label, 'Panel removed.');
+    });
+  }
+
+  $('addPanelBtn').addEventListener('click', addPanel);
+
+  // Start with one panel, matching this tool's original single-room behavior.
+  addPanel();
 })();
 </script>
 </body>
