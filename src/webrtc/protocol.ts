@@ -10,10 +10,11 @@ export type Role = 'monitor' | 'parent';
 
 export type ClientMessage =
   | { type: 'join'; room: string; role: Role; deviceId?: string }
-  | { type: 'signal'; payload: unknown; to?: string };
+  | { type: 'signal'; payload: unknown; to?: string }
+  | { type: 'set-alias'; alias: string };
 
 export type ServerMessage =
-  | { type: 'joined'; role: Role }
+  | { type: 'joined'; role: Role; room?: string }
   | { type: 'peer-joined'; deviceId?: string }
   | { type: 'peer-left'; deviceId?: string }
   | { type: 'signal'; payload: unknown; from?: string }

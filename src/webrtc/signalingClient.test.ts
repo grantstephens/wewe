@@ -209,4 +209,41 @@ describe('SignalingClient', () => {
 
     expect(JSON.parse(sockets[0]!.sent[0]!)).toEqual({ type: 'signal', payload: { sdp: 'x' }, to: 'dev-1' });
   });
+
+  it('fires onJoined with the acked room on every successful join', async () => {
+    const { factory, sockets } = fakeFactory();
+    const client = new SignalingClient('ws://relay.example.com', factory);
+    const onJoined = jest.fn();
+
+    const connected = client.connect('482913', 'parent', { onJoined }, 'dev-1');
+    sockets[0]!.simulateOpen();
+    sockets[0]!.simulateMessage({ type: 'joined', role: 'parent', room: 'stable-1' });
+    await connected;
+
+    expect(onJoined).toHaveBeenCalledWith('stable-1');
+  });
+
+  it('fires onJoined with undefined room for a monitor join', async () => {
+    const { factory, sockets } = fakeFactory();
+    const client = new SignalingClient('ws://relay.example.com', factory);
+    const onJoined = jest.fn();
+
+    const connected = client.connect('stable-1', 'monitor', { onJoined });
+    sockets[0]!.simulateOpen();
+    sockets[0]!.simulateMessage({ type: 'joined', role: 'monitor' });
+    await connected;
+
+    expect(onJoined).toHaveBeenCalledWith(undefined);
+  });
+
+  it('sends a set-alias message', async () => {
+    const { factory, sockets } = fakeFactory();
+    const client = new SignalingClient('ws://relay.example.com', factory);
+
+    await Promise.all([client.connect('stable-1', 'monitor', {}), Promise.resolve(joinSocket(sockets[0]!))]);
+    sockets[0]!.sent.length = 0; // clear the join message
+    client.setAlias('482913');
+
+    expect(JSON.parse(sockets[0]!.sent[0]!)).toEqual({ type: 'set-alias', alias: '482913' });
+  });
 });

@@ -37,6 +37,8 @@ export interface SignalingHandlers {
   onReconnecting?: (attempt: number, delayMs: number) => void;
   /** Fires once a retry successfully rejoins the room. Never fires for the very first, initial connect. */
   onReconnected?: () => void;
+  /** Fires on every successful join (initial and each reconnect) with the room the relay actually resolved to — present for a Parent (whether it arrived via a live alias or a room name that was already real), undefined for a Monitor. */
+  onJoined?: (room?: string) => void;
 }
 
 /**
@@ -104,6 +106,7 @@ export class SignalingClient {
           this.reconnectAttempt = 0;
           if (this.hasConnectedOnce) this.handlers.onReconnected?.();
           this.hasConnectedOnce = true;
+          this.handlers.onJoined?.(message.room);
           resolve();
           break;
         case 'peer-joined':
@@ -150,6 +153,11 @@ export class SignalingClient {
   /** Sends an opaque signaling payload (an SDP description or an ICE candidate) to the other peer in the room. `to` is required when this client is the Monitor (routing to a specific Parent); omitted otherwise. */
   sendSignal(payload: unknown, to?: string): void {
     this.socket?.send(JSON.stringify({ type: 'signal', payload, to } satisfies ClientMessage));
+  }
+
+  /** Registers `alias` as a short-lived name for this client's own room — Monitor-only; the relay rejects it from a Parent. */
+  setAlias(alias: string): void {
+    this.socket?.send(JSON.stringify({ type: 'set-alias', alias } satisfies ClientMessage));
   }
 
   close(): void {
