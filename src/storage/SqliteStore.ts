@@ -28,6 +28,24 @@ function toMonitor(row: MonitorRow): PairedMonitor {
   return { id: row.id, label: row.label, roomId: row.roomId, addedAt: row.addedAt };
 }
 
+/**
+ * A device that installed the app before the 2026-09-25 pairing-code rework
+ * has a `monitors` table with the old `lastPairingCode` column, not
+ * `roomId` — `CREATE TABLE IF NOT EXISTS` is a no-op against an
+ * already-existing table, so it never picks up the rename on its own,
+ * and every `roomId`-referencing query crashes with "no such column:
+ * roomId" until this runs. Checked via `PRAGMA table_info` rather than a
+ * blind try/catch so a genuinely unexpected error during the ALTER isn't
+ * silently swallowed; a no-op on an already-migrated or brand-new database.
+ */
+async function migrateLastPairingCodeToRoomId(db: SqlDatabase): Promise<void> {
+  const columns = await db.all<{ name: string }>('PRAGMA table_info(monitors)');
+  const hasOldColumn = columns.some((column) => column.name === 'lastPairingCode');
+  if (hasOldColumn) {
+    await db.exec('ALTER TABLE monitors RENAME COLUMN lastPairingCode TO roomId;');
+  }
+}
+
 interface EventRow {
   id: string;
   monitorId: string;
@@ -80,6 +98,7 @@ export class SqliteStore implements Store {
         addedAt  TEXT NOT NULL
       );
     `);
+    await migrateLastPairingCodeToRoomId(db);
     return new SqliteStore(db);
   }
 
