@@ -3,10 +3,22 @@ import React from 'react';
 import { Alert, FlatList, StyleSheet, View } from 'react-native';
 import { Button, Dialog, IconButton, List, Portal, Text, TextInput, useTheme } from 'react-native-paper';
 
+import { useParentSessions } from '../ParentSessionsContext';
 import type { PairedMonitor } from '../domain/store';
 import type { RootStackParamList } from '../navigation';
 import { useWewe } from '../WeweContext';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+
+/** A short, human status line for a monitor row — mirrors the states ParentSessionState actually produces. */
+function statusText(monitorId: string, states: ReturnType<typeof useParentSessions>['states']): string {
+  const state = states.get(monitorId);
+  if (!state) return 'Connecting…';
+  if (state.rejected !== null) return 'Not let in yet';
+  if (state.reconnecting !== null) return `Reconnecting (attempt ${state.reconnecting})…`;
+  if (state.connectionState === 'connected') return 'Connected';
+  if (state.connectTimedOut) return "Couldn't reach this monitor";
+  return 'Connecting…';
+}
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
@@ -18,6 +30,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 export function HomeScreen({ navigation }: Props) {
   const theme = useTheme();
   const { store, bump, revision } = useWewe();
+  const { states, renameMonitor } = useParentSessions();
   const [monitors, setMonitors] = React.useState<PairedMonitor[]>([]);
   const [renaming, setRenaming] = React.useState<PairedMonitor | null>(null);
   const [renameDraft, setRenameDraft] = React.useState('');
@@ -48,7 +61,8 @@ export function HomeScreen({ navigation }: Props) {
     if (!renaming) return;
     const label = renameDraft.trim();
     if (label) {
-      store.addMonitor({ ...renaming, label }).then(bump);
+      renameMonitor(renaming.id, label);
+      bump();
     }
     setRenaming(null);
   };
@@ -70,7 +84,7 @@ export function HomeScreen({ navigation }: Props) {
         renderItem={({ item }) => (
           <List.Item
             title={item.label}
-            description="Tap to view"
+            description={statusText(item.id, states)}
             left={(props) => <List.Icon {...props} icon="baby-face-outline" />}
             right={() => (
               <View style={styles.itemActions}>
