@@ -82,6 +82,8 @@ export class MonitorSession {
   private codeExpiresAt: number | null = null;
   private inviteTimer: ReturnType<typeof setTimeout> | null = null;
   private currentName = '';
+  /** Whether the *Monitor's own screen* should display `currentCode` — false when the currently-live code was armed on behalf of a remote Parent's invite request, so only that Parent's screen shows it. Independent of `inviteMode`/`remoteHolders`, which track authorization, not display. */
+  private localShouldShowCode = false;
 
   constructor(
     private readonly options: MonitorSessionOptions,
@@ -135,9 +137,10 @@ export class MonitorSession {
     });
   }
 
-  /** Generates a fresh pairing code, registers it as a relay alias for this room, opens this device's own invite-mode hold, and starts a fresh `INVITE_WINDOW_MS` countdown. Call after `start()` resolves, and again whenever the user explicitly asks to re-open pairing. */
+  /** Generates a fresh pairing code, registers it as a relay alias for this room, opens this device's own invite-mode hold, and starts a fresh `INVITE_WINDOW_MS` countdown. Call after `start()` resolves, and again whenever the user explicitly asks to re-open pairing. Always shows the new code on this device's own screen — an explicit local action, unlike a remote Parent's invite request. */
   rearmInvite(): void {
     this.inviteMode.open('local');
+    this.localShouldShowCode = true;
     this.armInvite();
   }
 
@@ -192,24 +195,29 @@ export class MonitorSession {
     this.inviteTimer = null;
     this.currentCode = null;
     this.codeExpiresAt = null;
+    this.localShouldShowCode = false;
     this.inviteMode.close('local');
     for (const holder of this.remoteHolders) this.inviteMode.close(holder);
     this.remoteHolders.clear();
     this.broadcastInviteCode();
   }
 
+  /** Notifies the Monitor's own screen (only when localShouldShowCode is true, or the code is being cleared — hiding is always shown regardless of who was showing it) and every remote holder (always) of the current code. */
   private broadcastInviteCode(): void {
-    this.events.onInviteCodeChange?.(this.currentCode, this.codeExpiresAt);
+    if (this.currentCode === null || this.localShouldShowCode) {
+      this.events.onInviteCodeChange?.(this.currentCode, this.codeExpiresAt);
+    }
     for (const holder of this.remoteHolders) {
       this.signaling.sendSignal({ inviteCode: this.currentCode }, holder);
     }
   }
 
-  /** A remote (already-authorized, already-connected) Parent asked to open invite mode. Reuses the currently-live code if there is one, rather than clobbering whatever the Monitor's own screen (or another Parent) might already be showing — only arms fresh if nothing is currently live. */
+  /** A remote (already-authorized, already-connected) Parent asked to open invite mode. Reuses the currently-live code if there is one, rather than clobbering whatever the Monitor's own screen (or another Parent) might already be showing — only arms fresh if nothing is currently live. A fresh arm triggered this way never shows the code on the Monitor's own screen — only the requesting Parent's. */
   private ensureInviteArmed(holder: string): void {
     this.remoteHolders.add(holder);
     this.inviteMode.open(holder);
     if (this.currentCode === null) {
+      this.localShouldShowCode = false;
       this.armInvite();
     } else {
       this.signaling.sendSignal({ inviteCode: this.currentCode }, holder);
