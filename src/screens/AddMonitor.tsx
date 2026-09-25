@@ -3,6 +3,7 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Button, List, Text, TextInput, useTheme } from 'react-native-paper';
 
+import { generateDeviceId } from '../domain/deviceId';
 import { isValidPairingCode, parsePairingUri } from '../domain/pairing';
 import { DEFAULT_SIGNALING_SERVER_URL, SETTINGS_KEYS, type PairedMonitor } from '../domain/store';
 import { formatTimestamp } from '../domain/timestamp';
@@ -45,9 +46,14 @@ export function AddMonitorScreen({ navigation }: Props) {
         await store.setSetting(SETTINGS_KEYS.signalingServerUrl, relayUrl);
       }
       const monitor: PairedMonitor = {
-        id: code,
+        // A fresh, stable local id — no longer the pairing code, which now
+        // rotates and can't identify anything durably. roomId starts as the
+        // scanned code (what we're about to try connecting to); Parent.tsx
+        // updates it in place once the relay's joined ack reports the real,
+        // stable room this resolved to.
+        id: generateDeviceId(),
         label,
-        lastPairingCode: code,
+        roomId: code,
         addedAt: formatTimestamp(new Date()),
       };
       await store.addMonitor(monitor);
