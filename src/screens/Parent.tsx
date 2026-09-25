@@ -59,6 +59,7 @@ export function ParentScreen({ route, navigation }: Props) {
   const [connectTimedOut, setConnectTimedOut] = React.useState(false);
   const [rejected, setRejected] = React.useState<string | null>(null);
   const [invitingListener, setInvitingListener] = React.useState(false);
+  const [inviteCode, setInviteCode] = React.useState<string | null>(null);
   const [relayUrl, setRelayUrl] = React.useState<string | null>(null);
   const [events, setEvents] = React.useState<ActivityEvent[]>([]);
   const [talking, setTalking] = React.useState(false);
@@ -114,7 +115,7 @@ export function ParentScreen({ route, navigation }: Props) {
         if (cancelled) return;
 
         const session = new ParentSession(
-          { signalingUrl: resolvedRelayUrl, pairingCode: monitor.lastPairingCode, deviceId },
+          { signalingUrl: resolvedRelayUrl, room: monitor.roomId, deviceId },
           {
             onConnectionStateChange: (state) => {
               setConnectionState(state);
@@ -132,6 +133,17 @@ export function ParentScreen({ route, navigation }: Props) {
             onSignalingReconnected: () => setReconnecting(null),
             onError: () => setConnectionState('failed'),
             onRejected: (reason) => setRejected(reason),
+            onRoomResolved: (room) => {
+              // Persisted only — not reflected into local `monitor` state,
+              // so this doesn't retrigger the connect effect (`monitor` is
+              // one of its deps) for a connection that's already live and
+              // already correct. Only affects the *next* time this screen
+              // mounts fresh.
+              if (room !== monitor.roomId) {
+                store.addMonitor({ ...monitor, roomId: room }).catch(() => {});
+              }
+            },
+            onInviteCode: (code) => setInviteCode(code),
           },
         );
         sessionRef.current = session;
@@ -238,6 +250,7 @@ export function ParentScreen({ route, navigation }: Props) {
         onPress={() => {
           const next = !invitingListener;
           setInvitingListener(next);
+          if (!next) setInviteCode(null);
           sessionRef.current?.setInviteMode(next);
         }}
         style={styles.talkButton}
@@ -245,13 +258,18 @@ export function ParentScreen({ route, navigation }: Props) {
         {invitingListener ? 'Stop inviting' : 'Invite a listener'}
       </Button>
 
-      {invitingListener && (
+      {invitingListener && inviteCode !== null && (
         <View style={styles.qrWrap}>
-          <QRCode value={pairingUri(monitor.lastPairingCode, relayUrl ?? '')} size={200} />
+          <QRCode value={pairingUri(inviteCode, relayUrl ?? '')} size={200} />
           <Text variant="headlineMedium" style={styles.code}>
-            {monitor.lastPairingCode}
+            {inviteCode}
           </Text>
         </View>
+      )}
+      {invitingListener && inviteCode === null && (
+        <Text variant="bodyMedium" style={styles.centeredText}>
+          Asking the monitor for a code…
+        </Text>
       )}
 
       <Text variant="titleMedium" style={styles.logTitle}>
@@ -278,6 +296,7 @@ const styles = StyleSheet.create({
   title: { marginBottom: 4 },
   status: { marginBottom: 24 },
   talkButton: { marginBottom: 24 },
+  centeredText: { textAlign: 'center', marginBottom: 16 },
   qrWrap: { padding: 16, backgroundColor: '#fff', borderRadius: 12, marginBottom: 16, alignItems: 'center' },
   code: { letterSpacing: 4, marginTop: 8 },
   logTitle: { marginBottom: 8 },
