@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Wewe test Parent</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
+  label { display: block; margin: 0.5rem 0 0.25rem; font-size: 0.9rem; color: #333; }
+  input { font-size: 1rem; padding: 0.4rem; width: 100%; box-sizing: border-box; }
+  button { font-size: 1rem; padding: 0.5rem 1rem; margin: 0.5rem 0.5rem 0.5rem 0; cursor: pointer; }
+  button:disabled { cursor: default; opacity: 0.5; }
+  #status { font-weight: bold; }
+  #log { background: #111; color: #0f0; font-family: ui-monospace, monospace; font-size: 0.8rem; padding: 0.75rem; height: 260px; overflow-y: auto; white-space: pre-wrap; }
+  #deviceId { font-family: ui-monospace, monospace; }
+</style>
+</head>
+<body>
+<h1>Wewe test Parent</h1>
+<p>
+  A browser stand-in for a phone running the Parent screen — speaks the same
+  relay wire protocol (see <code>signal-server/src/server.ts</code>) and uses
+  the browser's own WebRTC stack, so it can join a real room, get
+  accepted/rejected by a real Monitor, and actually play the audio it
+  receives. Useful when you don't have enough physical phones to exercise the
+  multi-listener/invite-mode paths — open this file in a few separate browser
+  tabs (each tab gets its own <code>deviceId</code>, persisted in
+  <code>sessionStorage</code> so it survives a reload but not a closed tab) to
+  stand in for extra phones.
+</p>
+
+<label for="relayUrl">Relay URL</label>
+<input id="relayUrl" value="wss://wewe-api.hub13.xyz" />
+
+<label for="code">Pairing code</label>
+<input id="code" placeholder="482913" />
+
+<button id="connectBtn">Connect</button>
+<button id="disconnectBtn" disabled>Disconnect</button>
+<button id="inviteBtn" disabled>Invite a listener</button>
+
+<p>deviceId (this tab): <code id="deviceId"></code>
+  <button id="newDeviceBtn">New device</button>
+</p>
+
+<p>Status: <span id="status">idle</span></p>
+
+<audio id="remoteAudio" autoplay></audio>
+
+<pre id="log"></pre>
+
+<script>
+(function () {
+  const ICE_SERVERS = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+  ];
+  const DEVICE_ID_KEY = 'wewe-test-parent-deviceId';
+
+  const $ = (id) => document.getElementById(id);
+
+  function log(msg) {
+    const el = $('log');
+    const time = new Date().toLocaleTimeString();
+    el.textContent += `[${time}] ${msg}\n`;
+    el.scrollTop = el.scrollHeight;
+  }
+
+  function randomDeviceId() {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  // sessionStorage (not localStorage) deliberately: it's per-tab, so every
+  // tab you open is automatically a distinct "device" with no setup, the
+  // same way two real phones would never share an install. Reloading a tab
+  // keeps its deviceId (so a reconnect test works); closing it drops it.
+  function getDeviceId() {
+    let id = sessionStorage.getItem(DEVICE_ID_KEY);
+    if (!id) {
+      id = randomDeviceId();
+      sessionStorage.setItem(DEVICE_ID_KEY, id);
+    }
+    return id;
+  }
+
+  let deviceId = getDeviceId();
+  $('deviceId').textContent = deviceId;
+
+  $('newDeviceBtn').addEventListener('click', () => {
+    sessionStorage.removeItem(DEVICE_ID_KEY);
+    deviceId = getDeviceId();
+    $('deviceId').textContent = deviceId;
+    log('Generated a new deviceId — this tab now looks like a never-before-seen device.');
+  });
+
+  let ws = null;
+  let pc = null;
+  let iceQueue = [];
+  let remoteDescriptionSet = false;
+  let inviting = false;
+
+  // Mirrors src/webrtc/peerConnectionHelpers.ts's guards.
+  function isSdpSignal(p) { return p !== null && typeof p === 'object' && 'sdp' in p; }
+  function isCandidateSignal(p) { return p !== null && typeof p === 'object' && 'candidate' in p; }
+  function isRejectedSignal(p) { return p !== null && typeof p === 'object' && 'rejected' in p; }
+
+  function sendSignal(payload) {
+    ws.send(JSON.stringify({ type: 'signal', payload }));
+  }
+
+  function setupPeerConnection() {
+    pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    iceQueue = [];
+    remoteDescriptionSet = false;
+    pc.onicecandidate = (event) => {
+      if (event.candidate) sendSignal({ candidate: event.candidate.toJSON() });
+    };
+    pc.onconnectionstatechange = () => {
+      log('RTCPeerConnection state: ' + pc.connectionState);
+      $('status').textContent = pc.connectionState;
+    };
+    pc.ontrack = (event) => {
+      log('Receiving remote audio.');
+      $('remoteAudio').srcObject = event.streams[0];
+    };
+    return pc;
+  }
+
+  // Mirrors src/webrtc/peerConnectionHelpers.ts's handleIncomingSdp: an
+  // offer is always answered, an answer never is, decided by sdp.type.
+  async function handleIncomingSdp(sdp) {
+    await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+    remoteDescriptionSet = true;
+    for (const candidate of iceQueue) await pc.addIceCandidate(new RTCIceCandidate(candidate));
+    iceQueue = [];
+    if (sdp.type === 'offer') {
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      sendSignal({ sdp: { sdp: answer.sdp, type: answer.type } });
+    }
+  }
+
+  async function handleSignal(payload) {
+    if (isRejectedSignal(payload)) {
+      log('REJECTED by monitor: ' + payload.reason);
+      $('status').textContent = 'rejected — ' + payload.reason;
+      return;
+    }
+    if (!pc) setupPeerConnection();
+    if (isSdpSignal(payload)) {
+      await handleIncomingSdp(payload.sdp);
+    } else if (isCandidateSignal(payload)) {
+      if (remoteDescriptionSet) {
+        await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
+      } else {
+        iceQueue.push(payload.candidate);
+      }
+    }
+  }
+
+  $('connectBtn').addEventListener('click', () => {
+    const url = $('relayUrl').value.trim();
+    const code = $('code').value.trim();
+    if (!url || !code) {
+      log('Need a relay URL and a pairing code.');
+      return;
+    }
+
+    ws = new WebSocket(url);
+    ws.onopen = () => {
+      log(`WebSocket open, joining room ${code} as parent (deviceId ${deviceId})`);
+      ws.send(JSON.stringify({ type: 'join', room: code, role: 'parent', deviceId }));
+    };
+    ws.onmessage = (event) => {
+      const msg = JSON.parse(event.data);
+      switch (msg.type) {
+        case 'joined':
+          log('Joined room as ' + msg.role);
+          $('status').textContent = 'joined, waiting for monitor';
+          $('inviteBtn').disabled = false;
+          $('connectBtn').disabled = true;
+          $('disconnectBtn').disabled = false;
+          break;
+        case 'peer-joined':
+          log('Monitor is present.');
+          $('status').textContent = 'monitor connected';
+          break;
+        case 'peer-left':
+          log('Monitor left.');
+          $('status').textContent = 'monitor disconnected';
+          if (pc) { pc.close(); pc = null; }
+          break;
+        case 'signal':
+          handleSignal(msg.payload).catch((err) => log('signal handling error: ' + err));
+          break;
+        case 'error':
+          log('Relay error: ' + msg.message);
+          $('status').textContent = 'error: ' + msg.message;
+          break;
+      }
+    };
+    ws.onerror = () => log('WebSocket error.');
+    ws.onclose = () => {
+      log('WebSocket closed.');
+      $('status').textContent = 'disconnected';
+      $('connectBtn').disabled = false;
+      $('disconnectBtn').disabled = true;
+      $('inviteBtn').disabled = true;
+      if (pc) { pc.close(); pc = null; }
+    };
+  });
+
+  $('disconnectBtn').addEventListener('click', () => {
+    if (pc) { pc.close(); pc = null; }
+    if (ws) ws.close();
+  });
+
+  $('inviteBtn').addEventListener('click', () => {
+    inviting = !inviting;
+    sendSignal({ inviteMode: inviting ? 'open' : 'closed' });
+    $('inviteBtn').textContent = inviting ? 'Stop inviting' : 'Invite a listener';
+    log('Invite mode: ' + (inviting ? 'open' : 'closed'));
+  });
+})();
+</script>
+</body>
+</html>
