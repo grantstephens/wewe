@@ -106,6 +106,7 @@
   function isSdpSignal(p) { return p !== null && typeof p === 'object' && 'sdp' in p; }
   function isCandidateSignal(p) { return p !== null && typeof p === 'object' && 'candidate' in p; }
   function isRejectedSignal(p) { return p !== null && typeof p === 'object' && 'rejected' in p; }
+  function isInviteCodeSignal(p) { return p !== null && typeof p === 'object' && 'inviteCode' in p; }
 
   let panelCount = 0;
 
@@ -123,6 +124,7 @@
       <button data-role="connect">Connect</button>
       <button data-role="disconnect" disabled>Disconnect</button>
       <button data-role="invite" disabled>Invite a listener</button>
+      <p data-role="inviteCodeWrap" hidden>Monitor's current code: <code data-role="inviteCodeText"></code></p>
       <p>Status: <span class="status" data-role="status">idle</span></p>
       <audio data-role="audio" autoplay></audio>
     `;
@@ -135,6 +137,8 @@
     const statusEl = container.querySelector('[data-role="status"]');
     const audioEl = container.querySelector('[data-role="audio"]');
     const removeBtn = container.querySelector('[data-role="remove"]');
+    const inviteCodeWrap = container.querySelector('[data-role="inviteCodeWrap"]');
+    const inviteCodeText = container.querySelector('[data-role="inviteCodeText"]');
 
     let ws = null;
     let pc = null;
@@ -186,6 +190,18 @@
       if (isRejectedSignal(payload)) {
         log(label, 'REJECTED by monitor: ' + payload.reason);
         setStatus('rejected — ' + payload.reason);
+        return;
+      }
+      if (isInviteCodeSignal(payload)) {
+        if (payload.inviteCode === null) {
+          log(label, 'Monitor says the invite code is no longer live.');
+          inviteCodeWrap.hidden = true;
+          inviteCodeText.textContent = '';
+        } else {
+          log(label, 'Monitor sent an invite code: ' + payload.inviteCode);
+          inviteCodeWrap.hidden = false;
+          inviteCodeText.textContent = payload.inviteCode;
+        }
         return;
       }
       if (!pc) setupPeerConnection();
@@ -248,6 +264,8 @@
         connectBtn.disabled = false;
         disconnectBtn.disabled = true;
         inviteBtn.disabled = true;
+        inviteCodeWrap.hidden = true;
+        inviteCodeText.textContent = '';
         if (pc) { pc.close(); pc = null; }
       };
     });
@@ -259,6 +277,10 @@
 
     inviteBtn.addEventListener('click', () => {
       inviting = !inviting;
+      if (!inviting) {
+        inviteCodeWrap.hidden = true;
+        inviteCodeText.textContent = '';
+      }
       sendSignal({ inviteMode: inviting ? 'open' : 'closed' });
       inviteBtn.textContent = inviting ? 'Stop inviting' : 'Invite a listener';
       log(label, 'Invite mode: ' + (inviting ? 'open' : 'closed'));
