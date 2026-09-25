@@ -63,6 +63,8 @@ export const SETTINGS_KEYS = {
   deviceId: 'deviceId',
   /** This install's persistent, never-displayed relay room id when acting as a Monitor — see `getOrCreateMonitorRoomId`. */
   monitorRoomId: 'monitorRoomId',
+  /** This install's current display name when acting as a Monitor — see `getOrCreateMonitorName`/`setMonitorName` in `src/domain/monitorName.ts`. */
+  monitorName: 'monitorName',
 } as const;
 
 /**
