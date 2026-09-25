@@ -6,6 +6,7 @@ import {
   IceCandidateQueue,
   isCandidateSignal,
   isInviteCodeSignal,
+  isMonitorNameSignal,
   isRejectedSignal,
   isSdpSignal,
 } from './peerConnectionHelpers';
@@ -37,6 +38,8 @@ export interface ParentSessionEvents {
   onRoomResolved?: (room: string) => void;
   /** Fires when the Monitor sends the currently-live pairing code after this Parent asked to invite a listener (see `setInviteMode`) — null means the invite window closed. */
   onInviteCode?: (code: string | null) => void;
+  /** Fires once, as soon as the Monitor first tells this Parent its display name (right after being accepted), and again every time the Monitor's name changes — from its own screen or any connected Parent's rename request, this Parent's own included. */
+  onMonitorNameChanged?: (name: string) => void;
 }
 
 /**
@@ -84,6 +87,11 @@ export class ParentSession {
   /** Asks the Monitor to open or close invite mode on this Parent's behalf — only honored if the Monitor still considers this deviceId connected (see MonitorSession.handleSignal). */
   setInviteMode(open: boolean): void {
     this.signaling.sendSignal({ inviteMode: open ? 'open' : 'closed' });
+  }
+
+  /** Asks the Monitor to rename itself — only honored if the Monitor still considers this deviceId connected. The confirmed new name arrives back via onMonitorNameChanged, same as any other rename (see MonitorSession.renameSelf). */
+  renameMonitor(name: string): void {
+    this.signaling.sendSignal({ setMonitorName: name });
   }
 
   /**
@@ -166,6 +174,10 @@ export class ParentSession {
     }
     if (isInviteCodeSignal(payload)) {
       this.events.onInviteCode?.(payload.inviteCode);
+      return;
+    }
+    if (isMonitorNameSignal(payload)) {
+      this.events.onMonitorNameChanged?.(payload.monitorName);
       return;
     }
     const pc = this.pc ?? this.setupPeerConnection();
