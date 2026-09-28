@@ -64,7 +64,8 @@ current release docs before writing this spec, not assumed:
 ## Goals
 
 - Every convenience ESPHome already provides for free stays free: Wi-Fi provisioning
-  and captive portal, OTA, structured logging, and a status/config web dashboard.
+  and captive portal, local-network reflashing, structured logging, and a status/config
+  web dashboard.
 - The only hand-written C/C++ is Wewe-specific: I2S mic capture wiring, the RMS/VAD
   gate (ported line-for-line from `src/domain/noiseGate.ts`, preserving its frozen-EMA
   and stationarity-window invariants per `AGENTS.md`), and a `signal-server` WebSocket
@@ -87,6 +88,13 @@ current release docs before writing this spec, not assumed:
 - Deciding the exact mic part number as a hard requirement — see "Hardware" below,
   which gives a recommendation plus fallbacks, not a single locked BOM line, since
   that's explicitly still an "open item" in `PLAN.md`.
+- **A project-maintained update pipeline.** This project does not build, host, or
+  maintain a GitHub-Releases-based auto-update mechanism for the firmware — no
+  hosted manifest, no update server, nothing this project is on the hook to keep
+  running. Anyone building this unit gets ESPHome's own local-network reflashing for
+  free (from their own machine or the ESPHome dashboard) and can wire up ESPHome's
+  own `update:`/HTTP-source OTA themselves, pointed at wherever they choose to host a
+  manifest, entirely as their own optional choice — not something Wewe ships.
 
 ## Spike gate — run this before anything else
 
@@ -121,7 +129,8 @@ this is a custom component, not a YAML platform).
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │ ESPHome-native (YAML-configured, zero custom code)           │
-│  wifi:, captive_portal:, ota:, api:, web_server:, logger:     │
+│  wifi:, captive_portal:, ota: (local reflash only, no        │
+│  GitHub-hosted update manifest), api:, web_server:, logger:   │
 ├─────────────────────────────────────────────────────────────┤
 │ Custom external_component: "wewe_webrtc"                     │
 │  - owns esp_webrtc/esp_peer lifecycle (setup/loop hooks)      │
@@ -163,13 +172,18 @@ Assistant gets these automatically; a user who doesn't never needs to know they 
 — nothing in the pairing/streaming path depends on ESPHome's API being reachable by
 anything other than the unit's own local web dashboard.
 
-### OTA
+### Firmware updates
 
-ESPHome's native `update:`/`ota:` components replace `PLAN.md`'s hand-rolled
-`esp_https_ota` call. Point ESPHome's update check at a manifest JSON hosted alongside
-GitHub Releases (ESPHome supports an HTTP(S) update source out of the box) rather than
-writing a custom updater — this is free convenience win #2 from adopting ESPHome, on
-top of the captive portal.
+ESPHome's `ota:`/`api:` components give local-network reflashing for free — push a
+new build from `esphome run`/the ESPHome dashboard on whatever machine built it,
+no GitHub Releases dependency, no hosted manifest. That's the only update path this
+project builds or documents. It deliberately does **not** wire up ESPHome's own
+`update:` HTTP-source component against a GitHub Releases manifest — this project
+isn't going to be on the hook for hosting/maintaining an auto-update pipeline for
+hardware it doesn't control the fleet of. Anyone who wants remote/automatic updates
+for their own unit can point ESPHome's `update:` component at their own hosted
+manifest themselves (that's exactly what ESPHome's own docs already cover); it's an
+optional choice for whoever builds this, not a Wewe deliverable.
 
 ### Signaling client
 
@@ -204,7 +218,7 @@ candidates, in recommended order:
    board, guaranteed PSRAM, full GPIO breakout for wiring an external I2S mic breakout
    board, cheapest to source, best-documented for exactly this kind of "component +
    custom peripheral" project. N8R8 (8MB flash/8MB PSRAM) is enough; no reason to pay
-   for N16R8 unless OTA image size or future features demand it.
+   for N16R8 unless flash headroom or future features demand it.
 2. **ESP32-S3-Korvo-2** — Espressif's own audio/voice-AI dev board: has a built-in
    dual-mic array (ES7210 ADC) and speaker/amp already wired, no breadboarding
    required. Worth it if the goal is a bring-up shortcut for a prototype, but the
@@ -275,7 +289,8 @@ mic.
 Only start these once the spike gate passes:
 
 1. **ESPHome shell scaffold** — YAML config, board target, `esp-idf` framework pin,
-   Wi-Fi + captive portal + OTA manifest wiring, logger.
+   Wi-Fi + captive portal wiring, logger. No GitHub-Releases update manifest — see
+   "Firmware updates."
 2. **`wewe_webrtc` external component skeleton** — lifecycle hooks wired to ESPHome's
    component model, entity registration (connection-state, RMS-level, mute), empty
    stubs for the pieces below.
@@ -295,7 +310,7 @@ Only start these once the spike gate passes:
    Wi-Fi provisioning flow.
 8. **End-to-end validation** — real wewe Parent app ↔ this firmware: audio quality,
    gate behavior parity with the phone Monitor, remote (STUN, not just LAN)
-   connectivity, an OTA update round-trip, and power-cycle/reconnect behavior.
+   connectivity, and power-cycle/reconnect behavior.
 
 Each of these is small enough to be its own implementation-plan task once this spec is
 approved and handed to `writing-plans`.
