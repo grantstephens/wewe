@@ -42,6 +42,17 @@ captive-portal convenience and rebuild the equivalents ourselves with plain ESP-
 components (below). This is flagged as the highest-risk, highest-effort workstream and is
 deliberately the last phase, built only once the phone-only product is proven.
 
+**Follow-up (2026-09-28):** the correction above about *stock* ESPHome YAML remains
+true — no ESPHome component does on-device WebRTC. But
+[`docs/superpowers/specs/2026-09-25-esphome-esp32-monitor-firmware-design.md`](docs/superpowers/specs/2026-09-25-esphome-esp32-monitor-firmware-design.md)'s
+feasibility spike (2026-09-28) confirmed that ESPHome's `esp-idf`-framework build mode
+can host a **custom external component** that links Espressif's actual
+`esp-webrtc-solution` (`esp_peer`) — a real ESP-IDF link, proven by a resolved,
+called symbol in the output map file, not a YAML platform. That spec now supersedes
+the Phase 4 paragraph below: ESPHome's Wi-Fi/captive-portal/OTA/dashboard
+infrastructure is reused instead of hand-rolled, and only the WebRTC glue, mic
+capture, and gate port remain custom.
+
 ## Architecture
 
 ```mermaid
@@ -147,10 +158,15 @@ activity log persistence; connection-loss alarm; foreground-service hardening.
 signing/expiry, reconnect/backoff), Settings UI for a custom relay URL, STUN config,
 real-network testing across two separate ISPs/NATs.
 
-**Phase 4 — ESP32-S3 firmware.** ESP-IDF + esp-webrtc-solution integration, I2S mic
-capture, on-device RMS gate ported from `src/domain`, Wi-Fi provisioning captive portal,
-pairing-code entry, OTA via GitHub Releases. Highest risk/effort phase; only start once
-Phases 1–3 validate the product end to end on phones alone.
+**Phase 4 — ESP32-S3 firmware.** Superseded by
+[`docs/superpowers/specs/2026-09-25-esphome-esp32-monitor-firmware-design.md`](docs/superpowers/specs/2026-09-25-esphome-esp32-monitor-firmware-design.md)
+(feasibility spike passed 2026-09-28): an ESPHome `esp-idf`-framework build with a
+custom external component linking `esp-webrtc-solution`, not a standalone ESP-IDF
+app. ESPHome supplies Wi-Fi provisioning/captive portal, local OTA, and the
+status/config dashboard for free; the only hand-written C/C++ is the WebRTC glue, I2S
+mic capture, the RMS gate port, and the `signal-server` signaling client. No
+GitHub-Releases OTA — see that spec's "Firmware updates" section. Highest risk/effort
+phase; only start once Phases 1–3 validate the product end to end on phones alone.
 
 **Phase 5 — Parity polish.** Multi-monitor support (Dormi²/Dormi³-style "add another
 monitor" list instead of separate apps), optional ambient-temperature display if the

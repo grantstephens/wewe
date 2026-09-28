@@ -1,7 +1,7 @@
 # ESP32-S3 hardware Monitor firmware, built on ESPHome
 
 **Date:** 2026-09-25
-**Status:** Draft — blocked on the feasibility spike in [Spike gate](#spike-gate-run-this-before-anything-else); not yet approved for implementation.
+**Status:** Spike gate passed 2026-09-28 (see [Spike gate result](#spike-gate-result-2026-09-28)). This spec now supersedes `PLAN.md`'s Phase 4 paragraph; not yet broken into implementation-plan tasks.
 
 ## Problem
 
@@ -121,6 +121,65 @@ succeeds, this spec supersedes `PLAN.md`'s current Phase 4 paragraph and the
 "Correction versus the ESPHome device framing" section gets a follow-up note (not a
 retraction — the correction about *stock* ESPHome YAML doing WebRTC remains true;
 this is a custom component, not a YAML platform).
+
+### Spike gate result (2026-09-28)
+
+**GO.** Ran the compile-only spike (scratch project, not committed — see artifacts
+note below) and it links cleanly. Evidence: the final `.map` file shows
+`esp_peer_get_default_impl` resolved from `wewe_webrtc_spike.cpp.obj` (the spike
+component's own object file, which calls it) into
+`managed_components/espressif__esp_peer/libs/esp32s3/libpeer_default.a` — real
+linkage from a real call site, not just an unreferenced Component Manager entry that
+the linker could have garbage-collected.
+
+Corrections to this spec's pre-spike assumptions, found by actually running it:
+
+- **Mechanism was ESPHome's `esp32.add_idf_component()` Python API, not a
+  hand-written `idf_component.yml` inside the external component.** ESPHome merged
+  first-class IDF Component Manager support in
+  [esphome#9163](https://github.com/esphome/esphome/pull/9163) (June 2025, well
+  before the 2026.9.0 release used here): a component's `__init__.py` calls
+  `add_idf_component(name="espressif/esp_peer", ref="1.5.5")` in `to_code()`, and
+  ESPHome generates `build/<name>/src/idf_component.yml` itself. This is cleaner
+  than what step 2 originally proposed and is the only mechanism actually available —
+  worth updating the Task breakdown's step 2 to reflect this when it's implemented.
+- **ESP-IDF version actually resolved was 5.5.5, not 6.0.1.** ESPHome 2026.9.0 (the
+  current release, spiked here) pins ESP-IDF 5.5.5. Still satisfies `esp_peer`'s
+  stated `>=5.0` floor, so the "no known version conflict" conclusion holds, but the
+  specific version this spec's "Confirmed research" section named was already stale
+  by the time of the spike — re-verify the pin at actual implementation time, not
+  from this spec.
+- **The board id for the PSRAM SKU this spec's Hardware section recommends
+  (N8R8) is `esp32-s3-devkitc1-n8r8`, not `esp32-s3-devkitc-1`.** The latter (as
+  literally written in step 1 above) is ESPHome/PlatformIO's id for the *No-PSRAM*
+  N8 variant — a board that cannot actually run this firmware (DTLS-SRTP + Opus is
+  PSRAM-dependent per this spec's own Hardware section). The spike was run against
+  `esp32-s3-devkitc1-n8r8`; use that id, not the bare one, in the real implementation.
+- **First compile attempt failed** — not a false start, a real, expected finding.
+  `esp_peer`'s DTLS-SRTP code (`dtls_srtp.c`/`dtls_common.h`) needs mbedTLS built
+  with SRTP support, which ESPHome's default sdkconfig does not enable
+  (`unknown type name 'mbedtls_ssl_srtp_profile'` and a dozen related
+  implicit-declaration errors). This is exactly the sdkconfig requirement this
+  spec's own "Confirmed research" section already named
+  (`CONFIG_MBEDTLS_SSL_PROTO_DTLS`, `CONFIG_MBEDTLS_SSL_DTLS_SRTP`,
+  `CONFIG_MBEDTLS_X509_CREATE_C`) — the spike confirms it's not optional, and that
+  the way to set it from an ESPHome external component is three
+  `add_idf_sdkconfig_option(..., True)` calls alongside `add_idf_component()`, not a
+  separate `sdkconfig.defaults` file (ESPHome external components don't get one).
+  Second attempt, with those three options added, compiled and linked clean.
+- **New finding, not previously documented anywhere in this spec:** `esp_peer`'s
+  default DTLS/ICE glue (the `peer_default` piece providing
+  `esp_peer_get_default_impl`) ships as a **prebuilt per-target static library**
+  (`managed_components/espressif__esp_peer/libs/esp32s3/libpeer_default.a`), not
+  built from the `esp_peer` source tree in this path. Doesn't block anything — the
+  spike still links and the demo pattern in `esp-webrtc-solution` uses it the same
+  way — but flag it during implementation planning as a license/audit item: it's a
+  binary blob dependency, not source this project can read or patch.
+
+**Artifacts:** the scratch ESPHome project (YAML + external-component stub) lived in
+a session scratchpad, not this repo, and was deleted after the spike — it was
+throwaway by design (see "compile-only spike" above). Reproducing it means
+redoing steps 1–3 above with the corrections noted here, not pulling a saved copy.
 
 ## Design
 
