@@ -136,6 +136,35 @@ describe('SignalingClient', () => {
     expect(JSON.parse(sockets[1]!.sent[0]!)).toEqual({ type: 'join', room: '482913', role: 'monitor' });
   });
 
+  it('reconnects using the resolved room, not the original alias, once one is known', async () => {
+    const { factory, sockets } = fakeFactory();
+    const client = new SignalingClient('ws://relay.example.com', factory);
+
+    // Joined via a pairing-code alias — the relay tells us back the real,
+    // stable room id it resolved to.
+    const connected = client.connect('482913', 'parent', {}, 'dev-1');
+    sockets[0]!.simulateOpen();
+    sockets[0]!.simulateMessage({ type: 'joined', role: 'parent', room: 'stable-room-1' });
+    await connected;
+
+    // Real, reproduced bug: without tracking the resolved room, this
+    // reconnect kept sending the original alias forever — which the relay
+    // only resolves for 60s, so any reconnect after that silently never
+    // lands. Simulating the drop well past that window here would just be
+    // testing the relay's TTL again; what matters is that the resolved
+    // room, not the alias, is what gets sent on the next attempt.
+    sockets[0]!.simulateNetworkDrop();
+    jest.advanceTimersByTime(500);
+    sockets[1]!.simulateOpen();
+
+    expect(JSON.parse(sockets[1]!.sent[0]!)).toEqual({
+      type: 'join',
+      room: 'stable-room-1',
+      role: 'parent',
+      deviceId: 'dev-1',
+    });
+  });
+
   it('includes deviceId in the join message when provided', async () => {
     const { factory, sockets } = fakeFactory();
     const client = new SignalingClient('ws://relay.example.com', factory);

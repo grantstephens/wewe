@@ -104,6 +104,18 @@ export class SignalingClient {
           joined = true;
           this.backoff.reset();
           this.reconnectAttempt = 0;
+          // Real, reproduced bug: a Parent's `room` argument is often a
+          // pairing-code alias (60s TTL on the relay), not the Monitor's
+          // real, stable room id. Without this, an automatic reconnect
+          // more than ~60s after the original join keeps retrying that
+          // same now-expired alias forever — the relay falls through to
+          // literal-room-name behavior (same as a wrong code) and the
+          // reconnect silently never lands, with no error surfaced beyond
+          // it just never coming back. `message.room` is the relay's own
+          // resolved room (present for a Parent, see onJoined's doc
+          // comment) — once we have it, every later reconnect attempt
+          // should use it instead of the original alias.
+          if (message.room !== undefined) this.room = message.room;
           if (this.hasConnectedOnce) this.handlers.onReconnected?.();
           this.hasConnectedOnce = true;
           this.handlers.onJoined?.(message.room);
