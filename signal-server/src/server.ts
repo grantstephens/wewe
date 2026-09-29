@@ -262,6 +262,17 @@ export function attachSignalingServer(wss: WebSocketServer, options: SignalingSe
         }, aliasTtlMs);
         timer.unref?.();
         aliasTimers.set(parsed.alias, timer);
+        // Real, reproduced bug: a lone Monitor arming a fresh pairing code
+        // is exactly the signal that this room is NOT abandoned — but
+        // without this, the room's TTL (rearmed only on join) just kept
+        // counting down from whenever it was last (re)joined, regardless
+        // of the Monitor actively tapping to pair. A code could be shown,
+        // get displayed to a user, and have the room it points at torn
+        // down seconds later with nobody ever having a chance to use it.
+        const room = rooms.get(joinedRoom);
+        if (room !== undefined) {
+          rearmRoomTimer(joinedRoom, room);
+        }
         return;
       }
 

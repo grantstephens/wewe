@@ -404,6 +404,35 @@ describe('room TTL', () => {
     await monitor.close();
     await server.close();
   });
+
+  test('setting an alias resets the lone-side TTL instead of leaving the original window running', async () => {
+    const server = await startServer({ roomTtlMs: SHORT_TTL_MS });
+    const monitor = await TestClient.connect(server.url);
+    monitor.send({ type: 'join', room: 'r1', role: 'monitor' });
+    await monitor.next(); // joined
+
+    // Arm a fresh alias partway through the original TTL window — this is
+    // exactly the "tap to pair" moment a real Monitor does.
+    await new Promise((resolve) => setTimeout(resolve, SHORT_TTL_MS * 0.6));
+    monitor.send({ type: 'set-alias', alias: '123456' });
+    const aliasedAtMs = Date.now();
+
+    // Real, reproduced bug: without resetting the TTL on set-alias,
+    // room-expired fires ~0.4*TTL after this point (the ORIGINAL join-based
+    // window's tail end) — well under one full TTL measured from the alias
+    // instead. Asserting on elapsed time, not a race against a second
+    // next() call: TestClient's waiter queue is FIFO or exactly one
+    // in-flight `next()` per test, so a race would leave a dangling
+    // waiter that a later `next()` call can never receive (the message
+    // resolves the OLDER dangling waiter instead) — a real, reproduced
+    // hang this test's first draft hit.
+    await expect(monitor.next()).resolves.toEqual({ type: 'error', message: 'room-expired' });
+    const elapsedSinceAliasMs = Date.now() - aliasedAtMs;
+    expect(elapsedSinceAliasMs).toBeGreaterThanOrEqual(SHORT_TTL_MS * 0.9);
+
+    await monitor.close();
+    await server.close();
+  });
 });
 
 describe('per-IP join rate limiting', () => {
