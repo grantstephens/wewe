@@ -11,6 +11,7 @@ import {
   IceCandidateQueue,
   isCandidateSignal,
   isInviteModeSignal,
+  isListenRequestSignal,
   isMonitorNameSignal,
   isSdpSignal,
   isSetMonitorNameSignal,
@@ -312,6 +313,18 @@ export class MonitorSession {
       if (!this.peers.has(from)) return;
       if (payload.inviteMode === 'open') this.ensureInviteArmed(from);
       else this.closeRemoteInvite(from);
+      return;
+    }
+
+    if (isListenRequestSignal(payload)) {
+      // Only an already-connected (and therefore already-authorized) peer
+      // may request Listen — same guard as inviteMode above. The gate is
+      // shared across every connected listener (one localStream, added to
+      // every RTCPeerConnection — see setupPeerConnection), so this opens
+      // audio for everyone currently connected, not just the requester;
+      // see the alerts/listen design spec's Global Constraints.
+      if (!this.peers.has(from)) return;
+      this.setGateOpen(payload.listenRequest);
       return;
     }
 
