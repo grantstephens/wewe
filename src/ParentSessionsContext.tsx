@@ -1,12 +1,15 @@
 import React from 'react';
 
+import { applyConnectionStateChange } from './domain/connectWatchdog';
 import { CryAlertClassifier } from './domain/cryAlert';
 import { getOrCreateDeviceId } from './domain/deviceId';
+import { shouldFireDisconnectBeep } from './domain/disconnectBeep';
 import type { ActivityEvent } from './domain/activityLog';
 import { DEFAULT_SIGNALING_SERVER_URL, SETTINGS_KEYS, type PairedMonitor } from './domain/store';
 import { formatTimestamp } from './domain/timestamp';
 import { fireConnectionLostAlert, fireCryAlert } from './platform/alerts';
 import { AndroidForegroundServiceType, startForegroundSession, stopForegroundSession } from './platform/foregroundService';
+import { playBeep } from './platform/sounds';
 import { useWewe } from './WeweContext';
 import { ParentSession } from './webrtc/parentSession';
 
@@ -15,6 +18,11 @@ const LEVEL_POLL_MS = 500;
 
 /** How long a session may go without ever reaching 'connected' before its connectTimedOut flag is set — see ParentSessionState's doc comment. Same value Parent.tsx used to watch for per-screen. */
 const CONNECT_TIMEOUT_MS = 20_000;
+
+/** How long a session may stay disconnected before the first audible beep — deliberately not instant, see disconnectBeep.ts. */
+const DISCONNECT_BEEP_THRESHOLD_MS = 15_000;
+/** How often the disconnect beep repeats while the problem persists. */
+const DISCONNECT_BEEP_REPEAT_MS = 15_000;
 
 function newEventId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -64,6 +72,7 @@ interface Managed {
   classifier: CryAlertClassifier;
   wasConnected: boolean;
   connectStartedAt: number;
+  lastDisconnectBeepAtMs: number | null;
 }
 
 /**
@@ -139,19 +148,27 @@ export function ParentSessionsProvider({ children }: { children: React.ReactNode
         classifier: new CryAlertClassifier(),
         wasConnected: false,
         connectStartedAt: Date.now(),
+        lastDisconnectBeepAtMs: null,
       };
 
       const session = new ParentSession(
         { signalingUrl: relayUrl, room: monitor.roomId, deviceId },
         {
           onConnectionStateChange: (connectionState) => {
-            managed.state = { ...managed.state, connectionState };
-            if (connectionState === 'connected') {
-              managed.state = { ...managed.state, connectTimedOut: false };
-              managed.wasConnected = true;
-            } else if ((connectionState === 'disconnected' || connectionState === 'failed') && managed.wasConnected) {
-              managed.wasConnected = false;
-              managed.connectStartedAt = Date.now();
+            const { next, fireLostAlert } = applyConnectionStateChange(
+              {
+                connectionState: managed.state.connectionState,
+                connectStartedAt: managed.connectStartedAt,
+                wasConnected: managed.wasConnected,
+                connectTimedOut: managed.state.connectTimedOut,
+              },
+              connectionState,
+              Date.now(),
+            );
+            managed.state = { ...managed.state, connectionState: next.connectionState, connectTimedOut: next.connectTimedOut };
+            managed.wasConnected = next.wasConnected;
+            managed.connectStartedAt = next.connectStartedAt;
+            if (fireLostAlert) {
               fireConnectionLostAlert(managed.state.monitor.label).catch(() => {});
               logEvent(managed.state.monitor.id, 'disconnected');
             }
@@ -279,10 +296,22 @@ export function ParentSessionsProvider({ children }: { children: React.ReactNode
             logEvent(managed.state.monitor.id, 'cry_alert');
           }
         });
-        if (managed.state.connectionState !== 'connected' && !managed.state.connectTimedOut) {
-          if (Date.now() - managed.connectStartedAt > CONNECT_TIMEOUT_MS) {
+        if (managed.state.connectionState === 'connected') {
+          managed.lastDisconnectBeepAtMs = null;
+        } else {
+          if (!managed.state.connectTimedOut && Date.now() - managed.connectStartedAt > CONNECT_TIMEOUT_MS) {
             managed.state = { ...managed.state, connectTimedOut: true };
             changed = true;
+          }
+          if (managed.state.rejected === null) {
+            store.getSetting(SETTINGS_KEYS.disconnectBeepEnabled).then((enabled) => {
+              if (enabled === 'false') return;
+              const now = Date.now();
+              if (shouldFireDisconnectBeep(managed.connectStartedAt, managed.lastDisconnectBeepAtMs, now, DISCONNECT_BEEP_THRESHOLD_MS, DISCONNECT_BEEP_REPEAT_MS)) {
+                managed.lastDisconnectBeepAtMs = now;
+                playBeep().catch(() => {});
+              }
+            });
           }
         }
       }
