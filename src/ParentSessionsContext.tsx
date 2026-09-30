@@ -1,6 +1,7 @@
 import React from 'react';
 
 import { applyConnectionStateChange } from './domain/connectWatchdog';
+import { describeConnectionStates } from './domain/connectionSummary';
 import { CryAlertClassifier } from './domain/cryAlert';
 import { getOrCreateDeviceId } from './domain/deviceId';
 import { shouldFireDisconnectBeep } from './domain/disconnectBeep';
@@ -111,8 +112,8 @@ export function ParentSessionsProvider({ children }: { children: React.ReactNode
     const types = anyTalking
       ? [AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK, AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_MICROPHONE]
       : [AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK];
-    const count = managed.length;
-    startForegroundSession('Wewe', `Watching ${count} ${count === 1 ? 'monitor' : 'monitors'}`, types).catch(() => {});
+    const body = describeConnectionStates(managed.map((m) => m.state.connectionState));
+    startForegroundSession('Wewe', body, types).catch(() => {});
   }, []);
 
   const logEvent = React.useCallback(
