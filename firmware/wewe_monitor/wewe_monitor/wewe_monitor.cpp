@@ -364,6 +364,22 @@ void pc_pump_task(void *arg) {
   vTaskDelete(nullptr);
 }
 
+// One shared mic/gate feeds every connected listener, matching
+// MonitorSession.ts's one localStream track added to every
+// RTCPeerConnection — the same frame goes to each of them.
+void send_frame_to_listeners(const uint8_t *encoded, int samples_per_frame, int frame_ms) {
+  for (auto &l : g_state.listeners) {
+    if (l.in_use && l.peer != nullptr) {
+      esp_peer_audio_frame_t frame = {};
+      frame.data = (uint8_t *)encoded;
+      frame.size = samples_per_frame;
+      frame.pts = (uint32_t)(g_state.frame_seq * frame_ms);
+      esp_peer_send_audio(l.peer, &frame);
+    }
+  }
+  g_state.frame_seq++;
+}
+
 void audio_send_task(void *arg) {
   const int sample_rate = 8000;
   const int frame_ms = 20;
@@ -386,19 +402,7 @@ void audio_send_task(void *arg) {
       for (int i = 0; i < samples_per_frame; i++) {
         encoded[i] = wewe_linear_to_alaw(pcm[i]);
       }
-      // One shared mic/gate feeds every connected listener, matching
-      // MonitorSession.ts's one localStream track added to every
-      // RTCPeerConnection — the same gated frame goes to each of them.
-      for (auto &l : g_state.listeners) {
-        if (l.in_use && l.peer != nullptr) {
-          esp_peer_audio_frame_t frame = {};
-          frame.data = encoded;
-          frame.size = samples_per_frame;
-          frame.pts = (uint32_t)(g_state.frame_seq * frame_ms);
-          esp_peer_send_audio(l.peer, &frame);
-        }
-      }
-      g_state.frame_seq++;
+      send_frame_to_listeners(encoded, samples_per_frame, frame_ms);
     }
   }
   vTaskDelete(nullptr);
