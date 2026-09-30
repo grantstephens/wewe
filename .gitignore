@@ -34,3 +34,7 @@ signal-server/dist/
 
 # superpowers plan-execution scratch (ledgers, briefs, review packages)
 .superpowers/
+
+# ESPHome firmware experiments — Wi-Fi credentials and build output
+firmware/*/secrets.yaml
+firmware/*/.esphome/
