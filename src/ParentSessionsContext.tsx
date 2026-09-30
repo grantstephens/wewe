@@ -294,6 +294,9 @@ export function ParentSessionsProvider({ children }: { children: React.ReactNode
           if (shouldAlert) {
             fireCryAlert(managed.state.monitor.label).catch(() => {});
             logEvent(managed.state.monitor.id, 'cry_alert');
+            store.getSetting(SETTINGS_KEYS.cryBeepEnabled).then((enabled) => {
+              if (enabled !== 'false') playBeep().catch(() => {});
+            });
           }
         });
         if (managed.state.connectionState === 'connected') {
