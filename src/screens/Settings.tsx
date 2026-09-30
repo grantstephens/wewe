@@ -1,8 +1,9 @@
 import React from 'react';
 import { Linking, ScrollView, StyleSheet, View } from 'react-native';
-import { Button, HelperText, Text, TextInput, useTheme } from 'react-native-paper';
+import { Button, HelperText, Switch, Text, TextInput, useTheme } from 'react-native-paper';
 
 import { DEFAULT_SIGNALING_SERVER_URL, SETTINGS_KEYS } from '../domain/store';
+import { playBeep } from '../platform/sounds';
 import { useWewe } from '../WeweContext';
 
 /**
@@ -16,14 +17,20 @@ export function SettingsScreen() {
   const theme = useTheme();
   const { store } = useWewe();
   const [relayUrl, setRelayUrl] = React.useState('');
+  const [cryBeepEnabled, setCryBeepEnabled] = React.useState(true);
+  const [disconnectBeepEnabled, setDisconnectBeepEnabled] = React.useState(true);
   const [saved, setSaved] = React.useState(false);
 
   React.useEffect(() => {
     store.getSetting(SETTINGS_KEYS.signalingServerUrl).then((value) => setRelayUrl(value || DEFAULT_SIGNALING_SERVER_URL));
+    store.getSetting(SETTINGS_KEYS.cryBeepEnabled).then((value) => setCryBeepEnabled(value !== 'false'));
+    store.getSetting(SETTINGS_KEYS.disconnectBeepEnabled).then((value) => setDisconnectBeepEnabled(value !== 'false'));
   }, [store]);
 
   const save = async () => {
     await store.setSetting(SETTINGS_KEYS.signalingServerUrl, relayUrl.trim());
+    await store.setSetting(SETTINGS_KEYS.cryBeepEnabled, cryBeepEnabled ? 'true' : 'false');
+    await store.setSetting(SETTINGS_KEYS.disconnectBeepEnabled, disconnectBeepEnabled ? 'true' : 'false');
     setSaved(true);
   };
 
@@ -32,6 +39,39 @@ export function SettingsScreen() {
       <Text variant="titleLarge" style={styles.title}>
         Settings
       </Text>
+
+      <Text variant="titleMedium" style={styles.sectionTitle}>
+        Alerts
+      </Text>
+      <View style={styles.toggleRow}>
+        <Text variant="bodyMedium" style={styles.toggleLabel}>
+          Beep when a cry is detected
+        </Text>
+        <Switch
+          testID="cry-beep-switch"
+          value={cryBeepEnabled}
+          onValueChange={(value) => {
+            setCryBeepEnabled(value);
+            setSaved(false);
+          }}
+        />
+      </View>
+      <View style={styles.toggleRow}>
+        <Text variant="bodyMedium" style={styles.toggleLabel}>
+          Beep when the monitor is unreachable
+        </Text>
+        <Switch
+          testID="disconnect-beep-switch"
+          value={disconnectBeepEnabled}
+          onValueChange={(value) => {
+            setDisconnectBeepEnabled(value);
+            setSaved(false);
+          }}
+        />
+      </View>
+      <Button mode="outlined" onPress={() => playBeep().catch(() => {})} style={styles.testButton}>
+        Test alert sound
+      </Button>
 
       <Text variant="titleMedium" style={styles.sectionTitle}>
         Signaling server
@@ -73,4 +113,7 @@ const styles = StyleSheet.create({
   sectionTitle: { marginTop: 8, marginBottom: 4 },
   help: { marginBottom: 12 },
   actions: { marginTop: 12 },
+  toggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  toggleLabel: { flex: 1, marginRight: 12 },
+  testButton: { marginBottom: 16, alignSelf: 'flex-start' },
 });

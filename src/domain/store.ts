@@ -65,6 +65,10 @@ export const SETTINGS_KEYS = {
   monitorRoomId: 'monitorRoomId',
   /** This install's current display name when acting as a Monitor — see `getOrCreateMonitorName`/`setMonitorName` in `src/domain/monitorName.ts`. */
   monitorName: 'monitorName',
+  /** 'true'/'false'; null (never set) defaults to enabled — see Parent app alerts spec. */
+  cryBeepEnabled: 'cryBeepEnabled',
+  /** 'true'/'false'; null (never set) defaults to enabled — see Parent app alerts spec. */
+  disconnectBeepEnabled: 'disconnectBeepEnabled',
 } as const;
 
 /**
