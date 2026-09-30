@@ -30,6 +30,7 @@ beforeEach(async () => {
     startTalking: async () => {},
     stopTalking: () => {},
     setInviteMode: () => {},
+    setListening: () => {},
     renameMonitor: jest.fn(),
   };
 });
@@ -48,6 +49,7 @@ function stateFor(overrides: Partial<ParentSessionState> & { monitor: ParentSess
     invitingListener: false,
     inviteCode: null,
     monitorName: null,
+    listening: false,
     ...overrides,
   };
 }

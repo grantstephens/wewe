@@ -44,6 +44,8 @@ export interface ParentSessionState {
   inviteCode: string | null;
   /** The Monitor's current display name, or null until its first `monitorName` signal arrives. */
   monitorName: string | null;
+  /** True while this Parent has an active Listen request open (see Parent.tsx's Listen button). Local UI state only — not echoed back by the Monitor, same as `invitingListener`/`talking`. */
+  listening: boolean;
 }
 
 export interface ParentSessionsValue {
@@ -54,6 +56,7 @@ export interface ParentSessionsValue {
   startTalking: (monitorId: string) => Promise<void>;
   stopTalking: (monitorId: string) => void;
   setInviteMode: (monitorId: string, open: boolean) => void;
+  setListening: (monitorId: string, listening: boolean) => void;
   renameMonitor: (monitorId: string, label: string) => void;
 }
 
@@ -145,6 +148,7 @@ export function ParentSessionsProvider({ children }: { children: React.ReactNode
           invitingListener: false,
           inviteCode: null,
           monitorName: null,
+          listening: false,
         },
         classifier: new CryAlertClassifier(),
         wasConnected: false,
@@ -229,6 +233,7 @@ export function ParentSessionsProvider({ children }: { children: React.ReactNode
     (monitorId: string): void => {
       const managed = managedRef.current.get(monitorId);
       if (!managed) return;
+      if (managed.state.listening) managed.session.setListenRequest(false);
       managed.session.stop();
       managedRef.current.delete(monitorId);
       recomputeForegroundService();
@@ -367,6 +372,17 @@ export function ParentSessionsProvider({ children }: { children: React.ReactNode
     [rerender],
   );
 
+  const setListening = React.useCallback(
+    (monitorId: string, listening: boolean): void => {
+      const managed = managedRef.current.get(monitorId);
+      if (!managed) return;
+      managed.session.setListenRequest(listening);
+      managed.state = { ...managed.state, listening };
+      rerender();
+    },
+    [rerender],
+  );
+
   const renameMonitor = React.useCallback(
     (monitorId: string, label: string): void => {
       const managed = managedRef.current.get(monitorId);
@@ -389,13 +405,14 @@ export function ParentSessionsProvider({ children }: { children: React.ReactNode
       startTalking,
       stopTalking,
       setInviteMode,
+      setListening,
       renameMonitor,
     };
     // `tick` is read only to force this memo to recompute after an
     // in-place `managedRef.current` mutation elsewhere in this component —
     // it has no other use.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tick, startTalking, stopTalking, setInviteMode, renameMonitor]);
+  }, [tick, startTalking, stopTalking, setInviteMode, setListening, renameMonitor]);
 
   return <ParentSessionsReactContext.Provider value={value}>{children}</ParentSessionsReactContext.Provider>;
 }

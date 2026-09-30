@@ -89,6 +89,11 @@ export class ParentSession {
     this.signaling.sendSignal({ inviteMode: open ? 'open' : 'closed' });
   }
 
+  /** Asks the Monitor to bypass its noise gate on this Parent's behalf (true = start listening, false = stop) — only honored if the Monitor still considers this deviceId connected (see MonitorSession.handleSignal / wewe_monitor.cpp's on_signal). */
+  setListenRequest(listening: boolean): void {
+    this.signaling.sendSignal({ listenRequest: listening });
+  }
+
   /** Asks the Monitor to rename itself — only honored if the Monitor still considers this deviceId connected. The confirmed new name arrives back via onMonitorNameChanged, same as any other rename (see MonitorSession.renameSelf). */
   renameMonitor(name: string): void {
     this.signaling.sendSignal({ setMonitorName: name });
@@ -180,6 +185,30 @@ export class ParentSession {
       this.events.onMonitorNameChanged?.(payload.monitorName);
       return;
     }
+    // Every offer this Parent ever receives comes from the Monitor's
+    // on_peer_joined — the firmware's *only* call site for create_peer_for
+    // (wewe_monitor.cpp) — which always builds a brand-new esp_peer object
+    // with fresh DTLS keys; it never renegotiates in place on an existing
+    // one. So an incoming offer never means "the live session wants a
+    // tweak" on this side either — it always means the Monitor has started
+    // over. Reusing the old RTCPeerConnection applies the new remote offer
+    // to a transport carrying the previous session's DTLS state, which the
+    // Monitor's fresh mbedTLS server then rejects as invalid records
+    // forever (real, reproduced on hardware: repeated "DTLS: Server
+    // handshake return -0x7200/-0x7880", never recovering).
+    //
+    // This used to be conditional on this.pc.connectionState already being
+    // failed/closed/disconnected, to avoid tearing down a session that
+    // genuinely didn't need it. That was racy and real: the Monitor
+    // recreates its peer within ~1 tick of detecting its own ICE agent
+    // disconnect, faster than this side's connectionState reliably
+    // transitions away from "connected" — so the guard silently missed the
+    // exact case it existed to catch. Tearing down unconditionally is safe
+    // here specifically because the Monitor never sends an offer for any
+    // other reason.
+    if (isSdpSignal(payload) && payload.sdp.type === 'offer' && this.pc !== null) {
+      this.teardownPeerConnection();
+    }
     const pc = this.pc ?? this.setupPeerConnection();
     if (isSdpSignal(payload)) {
       await handleIncomingSdp(pc, payload.sdp, this.iceQueue, (p) => this.signaling.sendSignal(p));
@@ -191,5 +220,6 @@ export class ParentSession {
   private teardownPeerConnection(): void {
     this.pc?.close();
     this.pc = null;
+    this.iceQueue.reset();
   }
 }

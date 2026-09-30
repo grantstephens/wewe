@@ -43,7 +43,7 @@ export function ParentScreen({ route, navigation }: Props) {
   const theme = useTheme();
   const { store } = useWewe();
   const { monitorId } = route.params;
-  const { states, getSession, startTalking, stopTalking, setInviteMode, renameMonitor } = useParentSessions();
+  const { states, getSession, startTalking, stopTalking, setInviteMode, setListening, renameMonitor } = useParentSessions();
   const state = states.get(monitorId);
 
   const [events, setEvents] = React.useState<ActivityEvent[]>([]);
@@ -118,6 +118,16 @@ export function ParentScreen({ route, navigation }: Props) {
         contentStyle={styles.secondaryButtonContent}
       >
         {state.invitingListener ? 'Stop inviting' : 'Invite a listener'}
+      </Button>
+
+      <Button
+        mode={state.listening ? 'contained' : 'outlined'}
+        icon="ear-hearing"
+        onPress={() => setListening(monitorId, !state.listening)}
+        style={styles.secondaryButton}
+        contentStyle={styles.secondaryButtonContent}
+      >
+        {state.listening ? 'Stop listening' : 'Listen now'}
       </Button>
 
       {state.invitingListener && state.inviteCode !== null && (
