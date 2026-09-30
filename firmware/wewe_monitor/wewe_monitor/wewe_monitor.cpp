@@ -62,6 +62,10 @@ namespace {
 #define MAX_LISTENERS WEWE_MAX_LISTENERS
 constexpr int64_t INVITE_WINDOW_MS = 60 * 1000;  // matches MonitorSession.ts's INVITE_WINDOW_MS
 
+// Safety-net timeout for a Listen request — matches INVITE_WINDOW_MS's
+// existing 60s pattern in this file.
+constexpr int64_t LISTEN_OVERRIDE_TIMEOUT_MS = 60 * 1000;
+
 struct Listener {
   bool in_use = false;
   char device_id[WEWE_ID_HEX_LEN + 1] = {};
@@ -111,6 +115,15 @@ struct RuntimeState {
   // observed until the gate first opens).
   int64_t last_activity_ms = 0;
   int64_t last_sound_ms = 0;
+
+  // A Parent's manual "Listen" request bypassing the gate — see
+  // on_signal's listenRequest handling. Global, not per-listener: the mic
+  // feed is shared across every connected listener already (see
+  // audio_send_task), so one Parent's Listen request opens audio for
+  // everyone currently connected. 60s safety-net timeout so a dropped
+  // connection or a missed "stop" never leaves the gate stuck open.
+  bool listen_override = false;
+  int64_t listen_override_expires_at_ms = 0;
 
   // Set by on_screen_touched() when a tap arrives while the screen was
   // off; consumed by on_pair_tapped() so that the tap which merely wakes
@@ -395,7 +408,11 @@ void audio_send_task(void *arg) {
 
     double level_db = pcm_rms_dbfs(pcm, samples_per_frame);
     int64_t now_ms = esp_timer_get_time() / 1000;
-    bool open = noise_gate_push(&g_state.gate, level_db, now_ms);
+    bool listen_override_active = g_state.listen_override && now_ms < g_state.listen_override_expires_at_ms;
+    if (g_state.listen_override && !listen_override_active) {
+      g_state.listen_override = false;  // safety-net timeout elapsed
+    }
+    bool open = noise_gate_push(&g_state.gate, level_db, now_ms) || listen_override_active;
 
     if (open) {
       g_state.last_sound_ms = now_ms;
@@ -511,6 +528,22 @@ void on_peer_left(const char *device_id, void *ctx) {
 }
 
 void on_signal(const char *from, cJSON *payload, void *ctx) {
+  cJSON *listen_request = cJSON_GetObjectItem(payload, "listenRequest");
+  if (cJSON_IsBool(listen_request)) {
+    // Only an already-connected (and therefore already-authorized) peer
+    // may request Listen — same guard as inviteMode below.
+    if (find_listener(from) == nullptr) {
+      return;
+    }
+    if (cJSON_IsTrue(listen_request)) {
+      g_state.listen_override = true;
+      g_state.listen_override_expires_at_ms = esp_timer_get_time() / 1000 + LISTEN_OVERRIDE_TIMEOUT_MS;
+    } else {
+      g_state.listen_override = false;
+    }
+    return;
+  }
+
   cJSON *invite_mode = cJSON_GetObjectItem(payload, "inviteMode");
   if (cJSON_IsString(invite_mode)) {
     // Only an already-connected (and therefore already-authorized) peer
