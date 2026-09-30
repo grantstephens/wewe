@@ -558,7 +558,7 @@ void on_signal(const char *from, cJSON *payload, void *ctx) {
 
 void on_error(const char *message, void *ctx) { ESP_LOGW(TAG, "Signaling error: %s", message); }
 
-void on_joined(void *ctx) { ESP_LOGI(TAG, "Joined signaling room; tap the screen to pair"); }
+void on_joined(void *ctx) { ESP_LOGI(TAG, "Joined signaling room"); }
 
 }  // namespace
 

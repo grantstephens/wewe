@@ -18,6 +18,16 @@ CONF_MAX_LISTENERS = "max_listeners"
 CONF_ICE_SERVERS = "ice_servers"
 DEFAULT_ICE_SERVERS = ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"]
 
+def _stun_url(value):
+    value = cv.string_strict(value)
+    if not value.startswith("stun:"):
+        raise cv.Invalid(
+            f"'{value}' must start with 'stun:' — this component is STUN-only (see AGENTS.md); "
+            "a scheme-less or turn: URL is silently ignored, not upgraded"
+        )
+    return value
+
+
 wewe_monitor_ns = cg.esphome_ns.namespace("wewe_monitor")
 WeweMonitor = wewe_monitor_ns.class_("WeweMonitor", cg.Component)
 
@@ -29,7 +39,7 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Required(CONF_DIN_PIN): pins.internal_gpio_input_pin_number,
         cv.Optional(CONF_MAX_LISTENERS, default=3): cv.int_range(min=1, max=8),
         cv.Optional(CONF_ICE_SERVERS, default=DEFAULT_ICE_SERVERS): cv.All(
-            cv.ensure_list(cv.string_strict), cv.Length(min=1)
+            cv.ensure_list(_stun_url), cv.Length(min=1)
         ),
     }
 ).extend(cv.COMPONENT_SCHEMA)

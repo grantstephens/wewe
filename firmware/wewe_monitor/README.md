@@ -29,8 +29,26 @@ external_components:
 wewe_monitor:
   id: monitor
   signal_url: "wss://your-relay.example.com"
-  clk_pin: GPIO0
-  din_pin: GPIO34
+  clk_pin: GPIO32
+  din_pin: GPIO33
+
+# Most esp32dev boards have a physical "BOOT" button already wired to
+# GPIO0, active-low — reused here as the pairing trigger so a headless
+# board (no touchscreen, no extra wiring) still has a way to pair. GPIO0
+# is a strapping pin, so `esphome config` will warn about it; that's
+# expected for this specific use (an onboard button momentarily pulling
+# it low), not a sign of a wiring problem.
+binary_sensor:
+  - platform: gpio
+    name: "Pair button"
+    pin:
+      number: GPIO0
+      mode:
+        input: true
+        pullup: true
+      inverted: true
+    on_press:
+      - lambda: id(monitor).on_pair_tapped();
 
 wifi:
   ssid: !secret wifi_ssid
@@ -44,11 +62,25 @@ logger:
 ```
 
 Pairing works exactly like the app: the first time this boots, it's
-"unpaired." Whatever mechanism you build to trigger pairing mode (the Core2
-reference example uses a touchscreen tap; a board with no display could use
-a physical button, or a fixed boot-time window) should call the component's
-`on_pair_tapped()` method, which shows a 6-digit rotating code — the app's
-"Add Monitor" flow enters that code to link the two.
+"unpaired." Whatever mechanism you build to trigger pairing mode (the
+example above reuses a devkit's onboard BOOT button; the Core2 reference
+example instead uses a touchscreen tap; a fixed boot-time window is
+another option) should call the component's `on_pair_tapped()` method.
+That arms a 6-digit rotating code, live for 60 seconds — the app's "Add
+Monitor" flow enters that code to link the two. On a board with no
+display, read the code back yourself rather than needing a screen:
+
+- `current_code()` — the active 6-digit code as a `std::string`, or empty
+  if no pairing window is currently open.
+- `seconds_remaining()` — seconds left in the current pairing window.
+- `connected_listener_count()` — how many Parents are currently connected.
+
+The code is also written to the ESPHome log at INFO level
+(`Invite code: NNNNNN`) every time a pairing window opens. A `lambda:` in
+an `interval:` or a `text_sensor:` template can surface
+`current_code()`/`seconds_remaining()` through any output your board
+supports, the same way `core2-spike/spike.yaml`'s display lambda does for
+its screen.
 
 ## Config reference
 
