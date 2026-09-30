@@ -1,5 +1,6 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
+from esphome import pins
 from esphome.components.esp32 import (
     add_idf_component,
     add_idf_sdkconfig_option,
@@ -11,6 +12,8 @@ CODEOWNERS = ["@wewe-project"]
 DEPENDENCIES = ["esp32", "wifi"]
 
 CONF_SIGNAL_URL = "signal_url"
+CONF_CLK_PIN = "clk_pin"
+CONF_DIN_PIN = "din_pin"
 
 wewe_monitor_ns = cg.esphome_ns.namespace("wewe_monitor")
 WeweMonitor = wewe_monitor_ns.class_("WeweMonitor", cg.Component)
@@ -19,6 +22,8 @@ CONFIG_SCHEMA = cv.Schema(
     {
         cv.GenerateID(): cv.declare_id(WeweMonitor),
         cv.Required(CONF_SIGNAL_URL): cv.string_strict,
+        cv.Required(CONF_CLK_PIN): pins.internal_gpio_output_pin_number,
+        cv.Required(CONF_DIN_PIN): pins.internal_gpio_input_pin_number,
     }
 ).extend(cv.COMPONENT_SCHEMA)
 
@@ -28,6 +33,8 @@ async def to_code(config):
     await cg.register_component(var, config)
 
     cg.add(var.set_signal_url(config[CONF_SIGNAL_URL]))
+    cg.add(var.set_clk_pin(config[CONF_CLK_PIN]))
+    cg.add(var.set_din_pin(config[CONF_DIN_PIN]))
 
     # esp_peer directly, not esp_webrtc: esp_webrtc's own transitive
     # dependency tree does not currently resolve (tempotian/av_render, with

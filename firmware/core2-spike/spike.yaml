@@ -244,6 +244,8 @@ binary_sensor:
 wewe_monitor:
   id: wewe
   signal_url: "wss://wewe-api.hub13.xyz"
+  clk_pin: GPIO0
+  din_pin: GPIO34
 
 wifi:
   id: wifi_comp

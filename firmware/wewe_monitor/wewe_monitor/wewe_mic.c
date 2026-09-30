@@ -20,7 +20,7 @@ static i2s_chan_handle_t s_rx_handle = NULL;
 // retune here if it's still too quiet or starts clipping on loud sounds.
 #define WEWE_MIC_GAIN 4
 
-int wewe_mic_init(int sample_rate_hz) {
+int wewe_mic_init(int sample_rate_hz, int clk_gpio, int din_gpio) {
     i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
     esp_err_t err = i2s_new_channel(&chan_cfg, NULL, &s_rx_handle);
     if (err != ESP_OK) {
@@ -33,8 +33,8 @@ int wewe_mic_init(int sample_rate_hz) {
         .slot_cfg = I2S_PDM_RX_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_MONO),
         .gpio_cfg =
             {
-                .clk = GPIO_NUM_0,
-                .din = GPIO_NUM_34,
+                .clk = (gpio_num_t)clk_gpio,
+                .din = (gpio_num_t)din_gpio,
                 .invert_flags = {.clk_inv = false},
             },
     };
@@ -50,7 +50,7 @@ int wewe_mic_init(int sample_rate_hz) {
         return -1;
     }
 
-    ESP_LOGI(TAG, "PDM mic initialized at %d Hz (clk=GPIO0, din=GPIO34)", sample_rate_hz);
+    ESP_LOGI(TAG, "PDM mic initialized at %d Hz (clk=GPIO%d, din=GPIO%d)", sample_rate_hz, clk_gpio, din_gpio);
     return 0;
 }
 

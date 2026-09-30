@@ -626,7 +626,7 @@ void WeweMonitor::setup() {
     return;
   }
 
-  if (wewe_mic_init(8000) != 0) {
+  if (wewe_mic_init(8000, this->clk_pin_, this->din_pin_) != 0) {
     ESP_LOGE(TAG, "wewe_mic_init failed — no audio will be captured");
   } else {
     g_state.send_task_running = true;
@@ -679,7 +679,7 @@ void WeweMonitor::start_signaling_() {
 }
 
 void WeweMonitor::dump_config() {
-  ESP_LOGCONFIG(TAG, "Wewe WebRTC spike component");
+  ESP_LOGCONFIG(TAG, "Wewe Monitor");
   ESP_LOGCONFIG(TAG, "  Signal URL: %s", this->signal_url_.c_str());
   ESP_LOGCONFIG(TAG, "  Room id: %.8s...", g_state.room_id);
 }

@@ -14,6 +14,8 @@ class WeweMonitor : public Component {
   void dump_config() override;
 
   void set_signal_url(const std::string &url) { signal_url_ = url; }
+  void set_clk_pin(int pin) { clk_pin_ = pin; }
+  void set_din_pin(int pin) { din_pin_ = pin; }
 
   // Bridges for the touchscreen UI (display: lambda / a touch binary_sensor's
   // on_press:) — see rearm_invite()/RuntimeState in the .cpp for the actual
@@ -37,6 +39,8 @@ class WeweMonitor : public Component {
   void start_signaling_();
 
   std::string signal_url_;
+  int clk_pin_ = -1;
+  int din_pin_ = -1;
   bool started_ = false;
 };
 
