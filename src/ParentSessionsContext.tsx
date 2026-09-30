@@ -57,6 +57,7 @@ export interface ParentSessionsValue {
   stopTalking: (monitorId: string) => void;
   setInviteMode: (monitorId: string, open: boolean) => void;
   setListening: (monitorId: string, listening: boolean) => void;
+  setBeepsMuted: (monitorId: string, muted: boolean) => void;
   renameMonitor: (monitorId: string, label: string) => void;
 }
 
@@ -300,9 +301,11 @@ export function ParentSessionsProvider({ children }: { children: React.ReactNode
           if (shouldAlert) {
             fireCryAlert(managed.state.monitor.label).catch(() => {});
             logEvent(managed.state.monitor.id, 'cry_alert');
-            store.getSetting(SETTINGS_KEYS.cryBeepEnabled).then((enabled) => {
-              if (enabled !== 'false') playBeep().catch(() => {});
-            });
+            if (!managed.state.monitor.beepsMuted) {
+              store.getSetting(SETTINGS_KEYS.cryBeepEnabled).then((enabled) => {
+                if (enabled !== 'false') playBeep().catch(() => {});
+              });
+            }
           }
         });
         if (managed.state.connectionState === 'connected') {
@@ -312,7 +315,7 @@ export function ParentSessionsProvider({ children }: { children: React.ReactNode
             managed.state = { ...managed.state, connectTimedOut: true };
             changed = true;
           }
-          if (managed.state.rejected === null) {
+          if (managed.state.rejected === null && !managed.state.monitor.beepsMuted) {
             store.getSetting(SETTINGS_KEYS.disconnectBeepEnabled).then((enabled) => {
               if (enabled === 'false') return;
               const now = Date.now();
@@ -383,6 +386,18 @@ export function ParentSessionsProvider({ children }: { children: React.ReactNode
     [rerender],
   );
 
+  const setBeepsMuted = React.useCallback(
+    (monitorId: string, muted: boolean): void => {
+      const managed = managedRef.current.get(monitorId);
+      if (!managed) return;
+      const updated = { ...managed.state.monitor, beepsMuted: muted };
+      managed.state = { ...managed.state, monitor: updated };
+      store.addMonitor(updated).catch(() => {});
+      rerender();
+    },
+    [store, rerender],
+  );
+
   const renameMonitor = React.useCallback(
     (monitorId: string, label: string): void => {
       const managed = managedRef.current.get(monitorId);
@@ -406,13 +421,14 @@ export function ParentSessionsProvider({ children }: { children: React.ReactNode
       stopTalking,
       setInviteMode,
       setListening,
+      setBeepsMuted,
       renameMonitor,
     };
     // `tick` is read only to force this memo to recompute after an
     // in-place `managedRef.current` mutation elsewhere in this component —
     // it has no other use.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tick, startTalking, stopTalking, setInviteMode, setListening, renameMonitor]);
+  }, [tick, startTalking, stopTalking, setInviteMode, setListening, setBeepsMuted, renameMonitor]);
 
   return <ParentSessionsReactContext.Provider value={value}>{children}</ParentSessionsReactContext.Provider>;
 }

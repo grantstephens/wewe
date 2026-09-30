@@ -15,6 +15,8 @@ export interface PairedMonitor {
   roomId: string;
   /** RFC3339 UTC. */
   addedAt: string;
+  /** True to silence both the cry beep and the disconnect beep for this monitor specifically — still requires the global Settings toggle to be on for any monitor to beep at all; this is a per-monitor opt-out, not an independent on-switch. Undefined (never set) means not muted. */
+  beepsMuted?: boolean;
 }
 
 /**

@@ -31,6 +31,7 @@ beforeEach(async () => {
     stopTalking: () => {},
     setInviteMode: () => {},
     setListening: () => {},
+    setBeepsMuted: () => {},
     renameMonitor: jest.fn(),
   };
 });
