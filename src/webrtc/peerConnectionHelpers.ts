@@ -26,7 +26,8 @@ export type SignalPayload =
   | { inviteMode: 'open' | 'closed' }
   | { inviteCode: string | null }
   | { monitorName: string }
-  | { setMonitorName: string };
+  | { setMonitorName: string }
+  | { listenRequest: boolean };
 
 /** True iff `payload` is the SDP half of a SignalPayload. */
 export function isSdpSignal(payload: unknown): payload is { sdp: WireSdp } {
@@ -63,6 +64,11 @@ export function isSetMonitorNameSignal(payload: unknown): payload is { setMonito
   return typeof payload === 'object' && payload !== null && 'setMonitorName' in payload;
 }
 
+/** True iff `payload` is a Parent asking the Monitor to bypass its noise gate on demand (true = start, false = stop) — only honored by MonitorSession/firmware from an already-connected (thus already-authorized) sender, same as inviteMode/setMonitorName. */
+export function isListenRequestSignal(payload: unknown): payload is { listenRequest: boolean } {
+  return typeof payload === 'object' && payload !== null && 'listenRequest' in payload;
+}
+
 /**
  * IceCandidateQueue holds ICE candidates that arrive over signaling before
  * `setRemoteDescription` has completed — a real race in WebRTC's normal
@@ -75,6 +81,12 @@ export function isSetMonitorNameSignal(payload: unknown): payload is { setMonito
 export class IceCandidateQueue {
   private pending: WireIceCandidate[] = [];
   private remoteDescriptionSet = false;
+
+  /** Call when a session's RTCPeerConnection is being replaced (torn down and about to be recreated) — without this, remoteDescriptionSet stays stuck true from the old connection, so a candidate arriving for the new one before its own setRemoteDescription resolves gets added immediately instead of queued, which react-native-webrtc rejects. */
+  reset(): void {
+    this.pending = [];
+    this.remoteDescriptionSet = false;
+  }
 
   /** Queues the candidate if the remote description isn't set yet, otherwise adds it immediately. */
   async add(pc: RTCPeerConnection, candidate: WireIceCandidate): Promise<void> {
