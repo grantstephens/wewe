@@ -15,6 +15,8 @@ CONF_SIGNAL_URL = "signal_url"
 CONF_CLK_PIN = "clk_pin"
 CONF_DIN_PIN = "din_pin"
 CONF_MAX_LISTENERS = "max_listeners"
+CONF_ICE_SERVERS = "ice_servers"
+DEFAULT_ICE_SERVERS = ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"]
 
 wewe_monitor_ns = cg.esphome_ns.namespace("wewe_monitor")
 WeweMonitor = wewe_monitor_ns.class_("WeweMonitor", cg.Component)
@@ -26,6 +28,9 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Required(CONF_CLK_PIN): pins.internal_gpio_output_pin_number,
         cv.Required(CONF_DIN_PIN): pins.internal_gpio_input_pin_number,
         cv.Optional(CONF_MAX_LISTENERS, default=3): cv.int_range(min=1, max=8),
+        cv.Optional(CONF_ICE_SERVERS, default=DEFAULT_ICE_SERVERS): cv.All(
+            cv.ensure_list(cv.string_strict), cv.Length(min=1)
+        ),
     }
 ).extend(cv.COMPONENT_SCHEMA)
 
@@ -38,6 +43,9 @@ async def to_code(config):
     cg.add(var.set_clk_pin(config[CONF_CLK_PIN]))
     cg.add(var.set_din_pin(config[CONF_DIN_PIN]))
     cg.add_define("WEWE_MAX_LISTENERS", config[CONF_MAX_LISTENERS])
+
+    for url in config[CONF_ICE_SERVERS]:
+        cg.add(var.add_ice_server(url))
 
     # esp_peer directly, not esp_webrtc: esp_webrtc's own transitive
     # dependency tree does not currently resolve (tempotian/av_render, with

@@ -16,6 +16,7 @@ class WeweMonitor : public Component {
   void set_signal_url(const std::string &url) { signal_url_ = url; }
   void set_clk_pin(int pin) { clk_pin_ = pin; }
   void set_din_pin(int pin) { din_pin_ = pin; }
+  void add_ice_server(const std::string &url);
 
   // Bridges for the touchscreen UI (display: lambda / a touch binary_sensor's
   // on_press:) — see rearm_invite()/RuntimeState in the .cpp for the actual

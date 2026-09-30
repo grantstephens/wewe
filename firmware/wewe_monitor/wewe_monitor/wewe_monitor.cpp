@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <cstring>
+#include <vector>
 
 #include "esp_random.h"
 #include "esp_timer.h"
@@ -120,6 +121,14 @@ struct RuntimeState {
   // binary_sensor's on_press runs first.
   bool pending_wake_only = false;
   int64_t pending_wake_only_ms = 0;
+
+  // Populated once, before setup() runs, by add_ice_server() calls
+  // generated from YAML's optional ice_servers list — see that method's
+  // own comment for why this is copied into a stable, RuntimeState-owned
+  // vector<char*>-compatible form rather than read fresh on every
+  // create_peer_for() call.
+  std::vector<std::string> ice_server_urls;
+  std::vector<esp_peer_ice_server_cfg_t> ice_server_cfgs;
 };
 
 RuntimeState g_state;
@@ -406,15 +415,9 @@ void create_peer_for(const char *device_id) {
   }
   l->next_outgoing_is_offer = true;
 
-  // STUN-only, matching src/webrtc/rtcConfig.ts's DEFAULT_ICE_SERVERS.
-  static esp_peer_ice_server_cfg_t ice_servers[] = {
-      {.stun_url = (char *)"stun:stun.l.google.com:19302", .user = nullptr, .psw = nullptr},
-      {.stun_url = (char *)"stun:stun1.l.google.com:19302", .user = nullptr, .psw = nullptr},
-  };
-
   esp_peer_cfg_t cfg = {};
-  cfg.server_lists = ice_servers;
-  cfg.server_num = 2;
+  cfg.server_lists = g_state.ice_server_cfgs.data();
+  cfg.server_num = (int)g_state.ice_server_cfgs.size();
   // MonitorSession is "always the offerer for each Parent that joins,
   // since it's the side with media to send" — every listener connection
   // is controlling, unconditionally, no is_initiator ambiguity at all.
@@ -590,6 +593,8 @@ void WeweMonitor::on_screen_touched() {
   }
 }
 
+void WeweMonitor::add_ice_server(const std::string &url) { g_state.ice_server_urls.push_back(url); }
+
 bool WeweMonitor::is_screen_on() const {
   int64_t now_ms = esp_timer_get_time() / 1000;
   return (now_ms - g_state.last_activity_ms) < SCREEN_TIMEOUT_MS;
@@ -617,6 +622,11 @@ int WeweMonitor::seconds_remaining() const {
 int WeweMonitor::connected_listener_count() const { return active_listener_count(); }
 
 void WeweMonitor::setup() {
+  for (const auto &url : g_state.ice_server_urls) {
+    g_state.ice_server_cfgs.push_back(
+        esp_peer_ice_server_cfg_t{.stun_url = (char *)url.c_str(), .user = nullptr, .psw = nullptr});
+  }
+
   noise_gate_init(&g_state.gate, nullptr);
   wewe_invite_mode_init(&g_state.invite_mode);
 
