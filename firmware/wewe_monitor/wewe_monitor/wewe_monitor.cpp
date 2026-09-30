@@ -55,7 +55,10 @@ static const char *const TAG = "wewe_monitor";
 
 namespace {
 
-#define MAX_LISTENERS 3
+#ifndef WEWE_MAX_LISTENERS
+#define WEWE_MAX_LISTENERS 3
+#endif
+#define MAX_LISTENERS WEWE_MAX_LISTENERS
 constexpr int64_t INVITE_WINDOW_MS = 60 * 1000;  // matches MonitorSession.ts's INVITE_WINDOW_MS
 
 struct Listener {
