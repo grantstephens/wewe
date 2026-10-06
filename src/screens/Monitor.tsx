@@ -141,7 +141,7 @@ export function MonitorScreen({ navigation }: Props) {
   // gating on that would reproduce the same race one level down.
   React.useEffect(() => {
     if (!isRecording) return;
-    startForegroundSession('Wewe is monitoring', 'Listening for noise and crying', [
+    startForegroundSession('wewe is monitoring', 'Listening for noise and crying', [
       AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_MICROPHONE,
     ]).catch(() => {});
   }, [isRecording]);

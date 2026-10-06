@@ -80,7 +80,7 @@ export function HomeScreen({ navigation }: Props) {
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <Text variant="headlineMedium" style={styles.title}>
-        Wewe
+        wewe
       </Text>
       <FlatList
         data={monitors}

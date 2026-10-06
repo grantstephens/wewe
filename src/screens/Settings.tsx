@@ -77,7 +77,7 @@ export function SettingsScreen() {
         Signaling server
       </Text>
       <Text variant="bodyMedium" style={styles.help}>
-        Wewe has no server of its own beyond this: a small relay that only ever forwards call
+        wewe has no server of its own beyond this: a small relay that only ever forwards call
         setup, never audio. A default is provided so this works out of the box — run your own
         instead, or point at one you trust.{' '}
         <Text style={{ color: theme.colors.primary }} onPress={() => Linking.openURL('https://wewe.hub13.xyz/privacy/')}>

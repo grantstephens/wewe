@@ -117,7 +117,7 @@ export function ParentSessionsProvider({ children }: { children: React.ReactNode
       ? [AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK, AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_MICROPHONE]
       : [AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK];
     const body = describeConnectionStates(managed.map((m) => m.state.connectionState));
-    startForegroundSession('Wewe', body, types).catch(() => {});
+    startForegroundSession('wewe', body, types).catch(() => {});
   }, []);
 
   const logEvent = React.useCallback(

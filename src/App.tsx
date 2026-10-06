@@ -77,7 +77,7 @@ export default function App() {
             <ParentSessionsProvider>
               <NavigationContainer theme={navTheme}>
                 <Stack.Navigator screenOptions={{ headerShown: true }}>
-                  <Stack.Screen name="Home" component={HomeScreen} options={{ title: 'Wewe' }} />
+                  <Stack.Screen name="Home" component={HomeScreen} options={{ title: 'wewe' }} />
                   <Stack.Screen name="Monitor" component={MonitorScreen} options={{ title: 'Monitor' }} />
                   <Stack.Screen name="Parent" component={ParentScreen} options={{ title: 'Watching' }} />
                   <Stack.Screen name="AddMonitor" component={AddMonitorScreen} options={{ title: 'Add a monitor' }} />
