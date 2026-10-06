@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Wewe</title>
-<meta name="description" content="An audio-only baby monitor for Android, phone-to-phone over WebRTC — no video, no cloud account.">
+<meta name="description" content="An audio-only baby monitor for Android — monitor from a spare phone or a dedicated ESP32 board, talking over WebRTC. No video, no cloud account.">
 <style>
   :root {
     --bg: #ffffff;
@@ -98,18 +98,21 @@
 
 <div class="hero">
   <h1>Wewe</h1>
-  <p>An audio-only baby monitor for Android. Turn one phone into the monitor and
-     another into the receiver, talking directly over WebRTC — no video, no cloud
-     account, no cameras pointed at your baby.</p>
+  <p>An audio-only baby monitor for Android. The Monitor can be a spare phone, or a
+     dedicated ESP32 board you build yourself — either way it talks directly to the
+     Parent app over WebRTC. No video, no cloud account, no cameras pointed at your
+     baby.</p>
 </div>
 
 <main>
   <section>
     <h2>What it is</h2>
     <ul class="features">
-      <li>Audio-only, phone-to-phone monitoring over WebRTC</li>
+      <li>Audio-only monitoring over WebRTC — Monitor from a spare phone or a
+        dedicated <a href="/hardware/">ESP32 board you build yourself</a></li>
       <li>Local noise gate — the Monitor only streams when there's sound</li>
-      <li>Cry/noise alerts and push-to-talk on the Parent phone</li>
+      <li>Cry and disconnect alerts (vibration, notification, and an audible beep,
+        each independently toggleable) plus push-to-talk on the Parent phone</li>
       <li>Pairing by QR code, six-digit code, or local-network discovery</li>
       <li>A convenience signaling relay is provided by default, but everything's
         self-hostable — see <a href="/privacy/">Privacy</a></li>
@@ -123,6 +126,10 @@
         <strong>Releases</strong>
         <span>Signed APKs and AABs for every tagged version</span>
       </a>
+      <a class="card" href="/hardware/">
+        <strong>Build a hardware Monitor</strong>
+        <span>Flash an ESP32 with ESPHome — no spare phone needed</span>
+      </a>
       <a class="card" href="https://github.com/grantstephens/wewe">
         <strong>Source on GitHub</strong>
         <span>GPLv3 · grantstephens/wewe</span>
@@ -133,8 +140,8 @@
   <section>
     <h2>Privacy</h2>
     <p>
-      Audio flows directly between the two phones, encrypted end-to-end by
-      WebRTC's own DTLS-SRTP. Read the full <a href="/privacy/">privacy policy</a>
+      Audio flows directly between the Monitor and the Parent phone, encrypted
+      end-to-end by WebRTC's own DTLS-SRTP. Read the full <a href="/privacy/">privacy policy</a>
       for exactly what the signaling relay does and does not see.
     </p>
   </section>

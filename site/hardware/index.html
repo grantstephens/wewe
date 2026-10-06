@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hardware Monitor — Wewe</title>
+<meta name="description" content="Build a dedicated Wewe Monitor on an ESP32 with ESPHome — no soldering a phone to a wall, no spare Android device tied up in a nursery.">
+<style>
+  :root {
+    --bg: #ffffff;
+    --surface: #f2f2f2;
+    --text: #1c1c1e;
+    --text-muted: #6e6e73;
+    --accent: #0a84ff;
+    --border: #d1d1d6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121212;
+      --surface: #1e1e1e;
+      --text: #e5e5e7;
+      --text-muted: #9b9ba1;
+      --accent: #0a84ff;
+      --border: #2c2c2e;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+  }
+  a { color: var(--accent); }
+  main {
+    max-width: 680px;
+    margin: 0 auto;
+    padding: 56px 24px 80px;
+  }
+  header { margin-bottom: 40px; }
+  header a.back {
+    display: inline-block;
+    margin-bottom: 24px;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    text-decoration: none;
+  }
+  h1 { margin: 0 0 8px; letter-spacing: -0.02em; }
+  .lede { color: var(--text-muted); font-size: 1.05rem; margin: 0; }
+  h2 {
+    font-size: 1.15rem;
+    margin: 44px 0 14px;
+  }
+  h3 {
+    font-size: 1rem;
+    margin: 24px 0 8px;
+  }
+  p { margin: 0 0 14px; }
+  ul, ol { padding-left: 1.3em; }
+  li { margin-bottom: 8px; }
+  .callout {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 20px;
+    margin: 20px 0;
+  }
+  .callout p:last-child { margin-bottom: 0; }
+  pre {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    overflow-x: auto;
+    font-size: 0.85rem;
+    line-height: 1.5;
+  }
+  code {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 0.9em;
+  }
+  pre code { background: none; border: none; padding: 0; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+  }
+  th, td {
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.9rem;
+    vertical-align: top;
+  }
+  th { color: var(--text-muted); font-weight: 600; }
+  .steps { padding-left: 1.4em; }
+  .steps li { margin-bottom: 18px; }
+  footer {
+    margin-top: 56px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 0.9rem;
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <a class="back" href="/">&larr; Wewe</a>
+    <h1>Build a hardware Monitor</h1>
+    <p class="lede">
+      The Monitor side of Wewe doesn't have to be a spare phone. It's also
+      an ESPHome component — flash a cheap ESP32 board with a microphone
+      and it pairs with the app exactly the same way a phone Monitor does.
+    </p>
+  </header>
+
+  <h2>What you need</h2>
+  <ul>
+    <li><strong>An ESP32 board with WiFi</strong> — a generic <code>esp32dev</code>
+      devkit is enough; nothing exotic is required.</li>
+    <li><strong>A PDM microphone breakout</strong>, wired to two GPIO pins
+      (clock + data) — any I2S-PDM-compatible mic module works.</li>
+    <li><strong>ESPHome</strong> installed on a computer to do the flashing:
+      <code>pip install esphome</code> (or the ESPHome CLI/Home Assistant
+      add-on, if you already use either).</li>
+    <li>A USB cable to flash the board the first time.</li>
+  </ul>
+  <div class="callout">
+    <p>
+      No display, no buttons beyond what you wire up yourself, no case
+      design decisions made for you. This is the bare component — see
+      <a href="https://github.com/grantstephens/wewe/tree/main/firmware/core2-spike">firmware/core2-spike</a>
+      in the repo for a worked example that adds a screen and touch
+      controls on an M5Stack Core2, if you want something more finished.
+    </p>
+  </div>
+
+  <h2>Set it up</h2>
+  <ol class="steps">
+    <li>
+      <strong>Create a secrets file</strong> alongside your config
+      (<code>secrets.yaml</code>) with your WiFi credentials:
+      <pre><code>wifi_ssid: "your-network"
+wifi_password: "your-password"</code></pre>
+    </li>
+    <li>
+      <strong>Write the config.</strong> This is the smallest thing that
+      produces a working Monitor — a bare board, no screen, pairing via
+      the devkit's onboard BOOT button:
+      <pre><code>esphome:
+  name: my-monitor
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+external_components:
+  - source:
+      type: git
+      url: https://github.com/grantstephens/wewe
+      path: firmware/wewe_monitor
+
+wewe_monitor:
+  id: monitor
+  signal_url: "wss://wewe-api.hub13.xyz"
+  clk_pin: GPIO32
+  din_pin: GPIO33
+
+binary_sensor:
+  - platform: gpio
+    name: "Pair button"
+    pin:
+      number: GPIO0
+      mode:
+        input: true
+        pullup: true
+      inverted: true
+    on_press:
+      - lambda: id(monitor).on_pair_tapped();
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+network:
+  enable_ipv6: true
+
+logger:</code></pre>
+      <p>
+        <code>clk_pin</code>/<code>din_pin</code> are whichever two GPIOs
+        your mic breakout is wired to — swap them for your actual wiring.
+        <code>signal_url</code> can stay pointed at the default relay
+        above, or your own self-hosted one (see the app's
+        <a href="/privacy/">privacy policy</a> for why that's an option at
+        all).
+      </p>
+    </li>
+    <li>
+      <strong>Flash it</strong>, connected over USB:
+      <pre><code>esphome run my-monitor.yaml</code></pre>
+      Pick the serial port when prompted. The device reboots onto WiFi
+      once it's done.
+    </li>
+    <li>
+      <strong>Pair it with the app.</strong> Press and hold the board's
+      BOOT button — that arms a six-digit pairing code, the same way the
+      Monitor screen in the app shows one. Since this board has no
+      display, read the code from the ESPHome logs instead
+      (<code>esphome logs my-monitor.yaml</code> — look for a line like
+      <code>Invite code: 482917</code>). Enter that code in the app's "Add
+      Monitor" flow, same as pairing two phones.
+    </li>
+  </ol>
+
+  <h2>Config reference</h2>
+  <table>
+    <tr><th>Key</th><th>Required</th><th>Default</th></tr>
+    <tr><td><code>signal_url</code></td><td>yes</td><td>&mdash;</td></tr>
+    <tr><td><code>clk_pin</code></td><td>yes</td><td>&mdash;</td></tr>
+    <tr><td><code>din_pin</code></td><td>yes</td><td>&mdash;</td></tr>
+    <tr><td><code>max_listeners</code></td><td>no</td><td><code>3</code></td></tr>
+    <tr><td><code>ice_servers</code></td><td>no</td><td>Google's public STUN pair</td></tr>
+  </table>
+  <p>
+    Full details, including why those two FreeRTOS task-stack sizes in the
+    component aren't arbitrary, are in the
+    <a href="https://github.com/grantstephens/wewe/blob/main/firmware/wewe_monitor/README.md">component's own README</a>.
+  </p>
+
+  <h2>Once it's paired</h2>
+  <p>
+    From here it behaves exactly like a phone Monitor: a local noise gate
+    only sends audio when it actually hears something, the Parent app
+    alerts on a detected cry, and push-to-talk works the same way. Nothing
+    about pairing, alerting, or the signaling relay cares which kind of
+    Monitor it's talking to.
+  </p>
+
+  <footer>
+    Questions, or built something interesting with it? Open an issue or a
+    discussion on
+    <a href="https://github.com/grantstephens/wewe">GitHub</a>.
+  </footer>
+</main>
+</body>
+</html>

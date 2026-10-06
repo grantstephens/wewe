@@ -101,22 +101,23 @@
 
   <div class="summary">
     <p>
-      Audio flows directly between the Monitor and Parent phones, encrypted
-      end-to-end by WebRTC's own DTLS-SRTP. This site's signaling relay only
-      ever helps the two phones find each other — it forwards small JSON
-      call-setup messages, never audio, and keeps no record of who paired
-      with whom beyond a few minutes. There is no account, no cloud storage,
-      and no analytics anywhere in the app.
+      Audio flows directly between the Monitor (a phone, or an ESP32 board you
+      build yourself) and the Parent phone, encrypted end-to-end by WebRTC's
+      own DTLS-SRTP. This site's signaling relay only ever helps the two
+      devices find each other — it forwards small JSON call-setup messages,
+      never audio, and keeps no record of who paired with whom beyond a few
+      minutes. There is no account, no cloud storage, and no analytics
+      anywhere in the app.
     </p>
   </div>
 
   <h2>What the signaling relay sees</h2>
   <p>
-    When you pair two phones, each connects to the signaling relay
+    When you pair a Monitor and a Parent, each connects to the signaling relay
     (<code>wss://wewe-api.hub13.xyz</code> by default) and joins a "room" named
     after the six-digit pairing code. The relay's only job is forwarding
     WebRTC session-setup messages (SDP offers/answers, ICE candidates)
-    between the two phones in that room so they can establish a direct
+    between the two devices in that room so they can establish a direct
     connection. Once that connection is up, audio flows peer-to-peer — the
     relay is no longer involved and never sees or stores it.
   </p>
