@@ -42,6 +42,9 @@ export interface MonitorSessionEvents {
 /** How long a newly-armed (or re-armed) invite code stays valid before it must be explicitly re-armed. Kept in sync with signal-server's own `DEFAULT_ALIAS_TTL_MS` by convention, not shared code — see that constant's doc comment. */
 const INVITE_WINDOW_MS = 60 * 1000;
 
+/** Safety net for a Listen override left active by a Parent that never sent `listenRequest: false` (killed app, lost connection mid-Listen). Matches the ESP32 firmware's own `LISTEN_OVERRIDE_TIMEOUT_MS`. */
+const LISTEN_OVERRIDE_TIMEOUT_MS = 60 * 1000;
+
 interface Peer {
   pc: RTCPeerConnection;
   iceQueue: IceCandidateQueue;
@@ -85,6 +88,11 @@ export class MonitorSession {
   private currentName = '';
   /** Whether the *Monitor's own screen* should display `currentCode` — false when the currently-live code was armed on behalf of a remote Parent's invite request, so only that Parent's screen shows it. Independent of `inviteMode`/`remoteHolders`, which track authorization, not display. */
   private localShouldShowCode = false;
+  /** The raw local NoiseGate's own open/closed verdict — recorded separately from the track's actual `enabled` state so a Listen override can win over it. See `setGateOpen`/`applyTrackEnabled`. */
+  private gateOpen = false;
+  /** Which connected device currently holds the Listen override, if any — cleared on an explicit `listenRequest: false`, on the 60s safety-net timeout, or when that device disconnects (`teardownPeer`). `null` means no override is active. */
+  private listenOverrideHolder: string | null = null;
+  private listenOverrideTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private readonly options: MonitorSessionOptions,
@@ -160,17 +168,55 @@ export class MonitorSession {
     }
   }
 
-  /** Enables or disables the outgoing mic track on every connected peer without renegotiating — the local NoiseGate's hook into this session. */
+  /**
+   * Enables or disables the outgoing mic track on every connected peer
+   * without renegotiating — the local NoiseGate's hook into this session,
+   * called on every mic-level sample (several times a second). Records the
+   * raw verdict rather than writing straight to `track.enabled`: a Listen
+   * override (see `handleSignal`'s `listenRequest` branch) must win over
+   * whatever this reports next, exactly like the ESP32 firmware's own
+   * `open || listen_override_active` decision in `audio_send_task`.
+   */
   setGateOpen(open: boolean): void {
+    this.gateOpen = open;
+    this.applyTrackEnabled();
+  }
+
+  /** The actual track-enabled decision: the raw gate, OR'd with an active Listen override — never written to directly. */
+  private applyTrackEnabled(): void {
+    const open = this.gateOpen || this.listenOverrideHolder !== null;
     for (const track of this.localStream?.getAudioTracks() ?? []) {
       track.enabled = open;
     }
+  }
+
+  /** Starts or clears a Listen override on behalf of `holder`, with a 60s safety-net timeout matching the firmware's. */
+  private setListenOverride(holder: string, active: boolean): void {
+    if (this.listenOverrideTimer !== null) {
+      clearTimeout(this.listenOverrideTimer);
+      this.listenOverrideTimer = null;
+    }
+    if (active) {
+      this.listenOverrideHolder = holder;
+      this.listenOverrideTimer = setTimeout(() => {
+        this.listenOverrideHolder = null;
+        this.listenOverrideTimer = null;
+        this.applyTrackEnabled();
+      }, LISTEN_OVERRIDE_TIMEOUT_MS);
+    } else if (this.listenOverrideHolder === holder) {
+      this.listenOverrideHolder = null;
+    }
+    this.applyTrackEnabled();
   }
 
   stop(): void {
     if (this.inviteTimer !== null) {
       clearTimeout(this.inviteTimer);
       this.inviteTimer = null;
+    }
+    if (this.listenOverrideTimer !== null) {
+      clearTimeout(this.listenOverrideTimer);
+      this.listenOverrideTimer = null;
     }
     for (const deviceId of [...this.peers.keys()]) this.teardownPeer(deviceId);
     for (const track of this.localStream?.getTracks() ?? []) {
@@ -324,7 +370,7 @@ export class MonitorSession {
       // audio for everyone currently connected, not just the requester;
       // see the alerts/listen design spec's Global Constraints.
       if (!this.peers.has(from)) return;
-      this.setGateOpen(payload.listenRequest);
+      this.setListenOverride(from, payload.listenRequest);
       return;
     }
 
@@ -340,5 +386,8 @@ export class MonitorSession {
   private teardownPeer(deviceId: string): void {
     this.peers.get(deviceId)?.pc.close();
     this.peers.delete(deviceId);
+    if (this.listenOverrideHolder === deviceId) {
+      this.setListenOverride(deviceId, false);
+    }
   }
 }

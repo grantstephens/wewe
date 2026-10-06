@@ -106,9 +106,17 @@ export function ParentSessionsProvider({ children }: { children: React.ReactNode
   const [tick, setTick] = React.useState(0);
   const rerender = React.useCallback(() => setTick((n) => n + 1), []);
 
+  // Dedup key for the last notification actually posted — connectionState
+  // changes flow through this on every ICE flicker (reconnect attempts,
+  // transient 'disconnected' blips), and re-posting on every one of those
+  // would spam the notification; only an actual change to the computed
+  // body (or the talking-driven types array) is worth a fresh call.
+  const lastForegroundKeyRef = React.useRef<string | null>(null);
+
   const recomputeForegroundService = React.useCallback(() => {
     const managed = [...managedRef.current.values()];
     if (managed.length === 0) {
+      lastForegroundKeyRef.current = null;
       stopForegroundSession().catch(() => {});
       return;
     }
@@ -117,6 +125,9 @@ export function ParentSessionsProvider({ children }: { children: React.ReactNode
       ? [AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK, AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_MICROPHONE]
       : [AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK];
     const body = describeConnectionStates(managed.map((m) => m.state.connectionState));
+    const key = `${anyTalking}|${body}`;
+    if (key === lastForegroundKeyRef.current) return;
+    lastForegroundKeyRef.current = key;
     startForegroundSession('wewe', body, types).catch(() => {});
   }, []);
 
@@ -178,6 +189,7 @@ export function ParentSessionsProvider({ children }: { children: React.ReactNode
               fireConnectionLostAlert(managed.state.monitor.label).catch(() => {});
               logEvent(managed.state.monitor.id, 'disconnected');
             }
+            recomputeForegroundService();
             rerender();
           },
           onSignalingReconnecting: (attempt) => {
@@ -190,6 +202,7 @@ export function ParentSessionsProvider({ children }: { children: React.ReactNode
           },
           onError: () => {
             managed.state = { ...managed.state, connectionState: 'failed' };
+            recomputeForegroundService();
             rerender();
           },
           onRejected: (reason) => {
@@ -293,7 +306,13 @@ export function ParentSessionsProvider({ children }: { children: React.ReactNode
       let changed = false;
       for (const managed of managedRef.current.values()) {
         managed.session.getRemoteAudioLevel().then((levelDb) => {
-          if (levelDb == null) {
+          if (levelDb == null || managed.state.listening) {
+            // A Listen request opens audio regardless of whether the room
+            // is actually noisy — classifying that flow would raise a
+            // false cry alert ~4s (CryAlertClassifier's sustainedAlertMs)
+            // after every "just checking in" tap. Keep the classifier
+            // reset so a real cry is still caught cleanly the moment
+            // Listen stops.
             managed.classifier.reset();
             return;
           }

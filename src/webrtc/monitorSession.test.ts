@@ -83,4 +83,68 @@ describe('MonitorSession — listenRequest', () => {
     await handleSignal(session, { listenRequest: true }, 'unknown-device');
     expect(tracks.every((t) => !t.enabled)).toBe(true);
   });
+
+  it('keeps the track enabled across a noise-gate push to false while a Listen override is active', async () => {
+    // Reproduces a real bug: Monitor.tsx calls session.setGateOpen() from its
+    // own NoiseGate on every mic-level sample (several times a second),
+    // independently of any Listen request. Before this test, that
+    // overwrote the override within one tick, making Listen a no-op
+    // against a quiet room.
+    const session = new MonitorSession({ signalingUrl: 'wss://example.invalid' }, fakeStore());
+    const tracks = [{ enabled: false }];
+    seedLocalStream(session, tracks);
+    await handlePeerJoined(session, 'device-1');
+
+    await handleSignal(session, { listenRequest: true }, 'device-1');
+    expect(tracks.every((t) => t.enabled)).toBe(true);
+
+    session.setGateOpen(false); // the noise gate's own per-sample call
+    expect(tracks.every((t) => t.enabled)).toBe(true);
+    await handleSignal(session, { listenRequest: false }, 'device-1'); // clears the 60s override safety-net timer
+  });
+
+  it('lets the noise gate close the track again once listenRequest: false is received', async () => {
+    const session = new MonitorSession({ signalingUrl: 'wss://example.invalid' }, fakeStore());
+    const tracks = [{ enabled: false }];
+    seedLocalStream(session, tracks);
+    await handlePeerJoined(session, 'device-1');
+
+    await handleSignal(session, { listenRequest: true }, 'device-1');
+    session.setGateOpen(false);
+    await handleSignal(session, { listenRequest: false }, 'device-1');
+    expect(tracks.every((t) => !t.enabled)).toBe(true);
+  });
+
+  it('expires a Listen override automatically after 60s, matching the firmware safety net', async () => {
+    jest.useFakeTimers();
+    try {
+      const session = new MonitorSession({ signalingUrl: 'wss://example.invalid' }, fakeStore());
+      const tracks = [{ enabled: false }];
+      seedLocalStream(session, tracks);
+      await handlePeerJoined(session, 'device-1');
+
+      await handleSignal(session, { listenRequest: true }, 'device-1');
+      session.setGateOpen(false);
+      expect(tracks.every((t) => t.enabled)).toBe(true);
+
+      jest.advanceTimersByTime(60_000);
+      expect(tracks.every((t) => !t.enabled)).toBe(true);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('clears a device’s Listen override when that device disconnects', async () => {
+    const session = new MonitorSession({ signalingUrl: 'wss://example.invalid' }, fakeStore());
+    const tracks = [{ enabled: false }];
+    seedLocalStream(session, tracks);
+    await handlePeerJoined(session, 'device-1');
+
+    await handleSignal(session, { listenRequest: true }, 'device-1');
+    session.setGateOpen(false);
+    expect(tracks.every((t) => t.enabled)).toBe(true);
+
+    (session as unknown as { teardownPeer(id: string): void }).teardownPeer('device-1');
+    expect(tracks.every((t) => !t.enabled)).toBe(true);
+  });
 });
