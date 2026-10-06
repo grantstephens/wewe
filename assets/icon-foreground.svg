@@ -1,7 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Scaled/recentered ~0.92x from the flat icon.svg's composition so the
+       farthest points (the big bubble, the moon) stay inside Android's
+       adaptive-icon safe zone (~66% of canvas, centered) — the flat
+       icon.svg/icon.png/favicon/splash use the full-bleed version instead,
+       since that constraint doesn't apply to them. -->
   <g fill="#FFE0B2">
-    <circle cx="512" cy="512" r="260"/>
-    <circle cx="592" cy="472" r="230" fill="#1A2140"/>
-    <path d="M720 270 L736.8 313.2 L780 330 L736.8 346.8 L720 390 L703.2 346.8 L660 330 L703.2 313.2 Z"/>
+    <circle cx="428.0" cy="600.2" r="159.6"/>
+    <circle cx="476.7" cy="575.8" r="141.1" fill="#1A2140"/>
+  </g>
+  <g fill="#FFE0B2">
+    <circle cx="417.9" cy="640.5" r="18.5"/>
+    <circle cx="468.3" cy="564.9" r="28.6"/>
+    <circle cx="543.9" cy="514.5" r="35.3"/>
+  </g>
+  <circle cx="636.3" cy="388.5" r="109.2" fill="#FFE0B2"/>
+  <g fill="none" stroke="#1A2140" stroke-linecap="round" stroke-linejoin="round">
+    <path stroke-width="25.2" d="M581.7,342.3 L690.9,342.3 L581.7,434.7 L690.9,434.7"/>
   </g>
 </svg>

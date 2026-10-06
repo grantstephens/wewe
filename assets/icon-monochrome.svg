@@ -1,8 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <mask id="cut">
+  <!-- Same ~0.92x scaled/recentered composition as icon-foreground.svg, for
+       the same adaptive-icon safe-zone reason — see its comment. -->
+  <mask id="moonCut">
     <rect width="1024" height="1024" fill="#FFFFFF"/>
-    <circle cx="592" cy="472" r="230" fill="#000000"/>
+    <circle cx="476.7" cy="575.8" r="141.1" fill="#000000"/>
   </mask>
-  <circle cx="512" cy="512" r="260" fill="#FFFFFF" mask="url(#cut)"/>
-  <path d="M720 270 L736.8 313.2 L780 330 L736.8 346.8 L720 390 L703.2 346.8 L660 330 L703.2 313.2 Z" fill="#FFFFFF"/>
+  <mask id="bubbleCut">
+    <rect width="1024" height="1024" fill="#FFFFFF"/>
+    <path d="M581.7,342.3 L690.9,342.3 L581.7,434.7 L690.9,434.7" fill="none" stroke="#000000" stroke-width="25.2" stroke-linecap="round" stroke-linejoin="round"/>
+  </mask>
+  <circle cx="428.0" cy="600.2" r="159.6" fill="#FFFFFF" mask="url(#moonCut)"/>
+  <g fill="#FFFFFF">
+    <circle cx="417.9" cy="640.5" r="18.5"/>
+    <circle cx="468.3" cy="564.9" r="28.6"/>
+    <circle cx="543.9" cy="514.5" r="35.3"/>
+  </g>
+  <circle cx="636.3" cy="388.5" r="109.2" fill="#FFFFFF" mask="url(#bubbleCut)"/>
 </svg>
