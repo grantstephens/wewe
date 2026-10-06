@@ -1,4 +1,4 @@
-# Wewe — plan
+# wewe — plan
 
 A baby monitor (à la Dormi) built with React Native/Expo + Material Design (styled like
 `../DriveWell`), audio-only. Either a phone or a purpose-built ESP32-S3 hardware unit can
@@ -179,7 +179,7 @@ cry classifier to replace/augment the RMS heuristic; talk-back playback on the E
 
 ## Open items to settle before Phase 0 begins
 
-- ~~App display name / package id / F-Droid distribution target~~ — resolved: `Wewe` /
+- ~~App display name / package id / F-Droid distribution target~~ — resolved: `wewe` /
   `xyz.hub13.wewe`, its own new F-Droid target (not DriveWell's).
 - ~~Default public signaling-relay hosting~~ — resolved: the project maintainer runs
   `wss://wewe-api.hub13.xyz` as the app's default (`DEFAULT_SIGNALING_SERVER_URL`),

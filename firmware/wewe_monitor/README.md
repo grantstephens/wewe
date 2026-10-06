@@ -2,7 +2,7 @@
 
 An ESPHome external component: WiFi signaling, pairing, WebRTC audio, mic
 capture, and adaptive noise-gating for building a hardware Monitor
-compatible with the [Wewe](https://github.com/grantstephens/wewe) baby
+compatible with the [wewe](https://github.com/grantstephens/wewe) baby
 monitor app. Audio-only — no display or UI is included or required; see
 `firmware/core2-spike/` in this repo for a worked example that adds one.
 
@@ -95,7 +95,7 @@ its screen.
 ## What you bring yourself
 
 - **WiFi credentials** — standard ESPHome `wifi:` config, nothing
-  Wewe-specific about it.
+  wewe-specific about it.
 - **Board power sequencing, if your hardware needs it.** Some boards gate
   their mic/GPIO rails behind a power-management IC that needs an explicit
   init sequence before anything else can use those pins — the M5Stack

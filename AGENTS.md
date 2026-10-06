@@ -1,4 +1,4 @@
-# Wewe — Agent guidance
+# wewe — Agent guidance
 
 This file provides guidance to coding agents (Claude Code, pi, etc.) when working in
 this repository.

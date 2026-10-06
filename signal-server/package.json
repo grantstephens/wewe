@@ -2,7 +2,7 @@
   "name": "wewe-signal-server",
   "version": "1.0.0",
   "private": true,
-  "description": "Stateless WebRTC signaling relay for Wewe: forwards SDP/ICE between exactly two peers (a monitor and a parent) sharing a pairing code. No media, no database, no accounts — self-hostable as a single process.",
+  "description": "Stateless WebRTC signaling relay for wewe: forwards SDP/ICE between exactly two peers (a monitor and a parent) sharing a pairing code. No media, no database, no accounts — self-hostable as a single process.",
   "main": "dist/server.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",

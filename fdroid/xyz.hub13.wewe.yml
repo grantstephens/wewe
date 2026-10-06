@@ -37,7 +37,7 @@ SourceCode: https://github.com/grantstephens/wewe
 IssueTracker: https://github.com/grantstephens/wewe/issues
 Changelog: https://github.com/grantstephens/wewe/releases
 
-AutoName: Wewe
+AutoName: wewe
 
 RepoType: git
 Repo: https://github.com/grantstephens/wewe.git

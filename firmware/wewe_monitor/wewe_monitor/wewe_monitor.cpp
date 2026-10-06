@@ -729,7 +729,7 @@ void WeweMonitor::start_signaling_() {
 }
 
 void WeweMonitor::dump_config() {
-  ESP_LOGCONFIG(TAG, "Wewe Monitor");
+  ESP_LOGCONFIG(TAG, "wewe Monitor");
   ESP_LOGCONFIG(TAG, "  Signal URL: %s", this->signal_url_.c_str());
   ESP_LOGCONFIG(TAG, "  Room id: %.8s...", g_state.room_id);
 }

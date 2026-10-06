@@ -1,4 +1,4 @@
-# Wewe
+# wewe
 
 A baby monitor (in the spirit of Dormi) with one difference: the monitor end can be a
 phone, or a purpose-built ESP32-S3 hardware unit with a microphone. Audio-only — no
