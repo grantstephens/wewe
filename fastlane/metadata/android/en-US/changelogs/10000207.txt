@@ -1,0 +1,15 @@
+* New: a dedicated hardware Monitor. Build one on an ESP32-S3 with ESPHome —
+  no spare phone needed in the nursery. See the setup guide at
+  wewe.hub13.xyz/hardware.
+* New: audible alerts. A short beep when a cry is detected, and a repeating
+  beep if a Monitor's been unreachable for more than 15 seconds — both
+  toggleable in Settings, and mutable per monitor.
+* New: a "Listen now" button to check in on the room anytime, even without
+  a detected cry — works against a phone or an ESP32 Monitor.
+* The persistent notification now shows live connection status (e.g.
+  "Monitor connected") instead of a static monitor count.
+* New app icon.
+* Fixed several reconnect edge cases: push-to-talk no longer goes silent
+  after a Monitor restarts mid-call, the app reconnects using the right
+  room after a Monitor's pairing code rotates, and the Listen button no
+  longer gets stuck showing "on" past its own 60-second limit.
