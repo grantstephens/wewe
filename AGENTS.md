@@ -95,6 +95,18 @@ Layered, dependencies pointing inward, same convention as DriveWell.
   went first. This is what makes push-to-talk work: the Parent, normally only ever an
   answerer for the initial call, becomes an offerer the moment `startTalking()` adds its
   track. Don't reintroduce a "the offerer is always X" assumption in either session.
+  **One deliberate exception:** `ParentSession.handleSignal` (`parentSession.ts`) tears
+  down and replaces its `RTCPeerConnection` outright on *every* incoming offer, not just
+  on `type: 'offer'` vs `'answer'` dispatch — see its own long inline comment for why
+  that's currently always correct (the firmware's `create_peer_for` is the Monitor's
+  only call site that ever sends an offer, and it always builds a fresh `esp_peer` with
+  new DTLS keys, so an incoming offer here always means "the Monitor started over",
+  never "renegotiate in place"). This is a property of *today's* Monitor
+  implementations, not of the wire protocol — a future Monitor that renegotiates an
+  existing connection in place (e.g. an ICE restart without a full peer rebuild) would
+  have its offer incorrectly treated as a restart here. If you add one, either make it
+  also always rebuild its peer on restart (matching the existing assumption), or narrow
+  this teardown to an actual DTLS-fingerprint change instead of "any offer".
 - **The signaling relay has a convenience default, not a hard requirement.**
   `SETTINGS_KEYS.signalingServerUrl` falls back to `DEFAULT_SIGNALING_SERVER_URL`
   (`src/domain/store.ts`, currently `wss://wewe-api.hub13.xyz`, an instance the project

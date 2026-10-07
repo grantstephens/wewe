@@ -21,7 +21,10 @@ class MockPeerConnection {
     return { sdp: 'fake-offer-sdp', type: 'offer' };
   }
   async addIceCandidate(): Promise<void> {}
-  addTrack(): void {}
+  addedTracks: unknown[] = [];
+  addTrack(track: unknown): void {
+    this.addedTracks.push(track);
+  }
   async getStats(): Promise<Map<string, Record<string, unknown>>> {
     return new Map();
   }
@@ -44,6 +47,7 @@ jest.mock('react-native-webrtc', () => ({
 }));
 
 // eslint-disable-next-line import/first -- must follow jest.mock('react-native-webrtc', ...) above
+import { mediaDevices } from 'react-native-webrtc';
 import { ParentSession } from './parentSession';
 
 /** Reaches the private handleSignal — TS privacy is compile-time only, and this is the seam the bug actually lives in. */
@@ -74,6 +78,33 @@ describe('ParentSession — fresh offer while the old peer connection looks aliv
     expect(mockPeerConnectionInstances).toHaveLength(2);
     expect(mockPeerConnectionInstances[0]!.closed).toBe(true);
     expect(mockPeerConnectionInstances[1]).not.toBe(mockPeerConnectionInstances[0]);
+  });
+});
+
+describe('ParentSession — talk-back survives a Monitor-initiated reconnect', () => {
+  beforeEach(() => {
+    mockPeerConnectionInstances.length = 0;
+  });
+
+  it('re-adds the talk-back track to the new RTCPeerConnection created for a fresh offer', async () => {
+    const fakeTrack = { enabled: true };
+    (mediaDevices.getUserMedia as jest.Mock).mockResolvedValue({
+      getAudioTracks: () => [fakeTrack],
+    });
+    const session = new ParentSession({ signalingUrl: 'wss://example.invalid', room: 'room-1', deviceId: 'device-1' });
+
+    await handleSignal(session, { sdp: { sdp: 'offer-1', type: 'offer' } });
+    await session.startTalking();
+    expect(mockPeerConnectionInstances[0]!.addedTracks).toContain(fakeTrack);
+
+    // The Monitor restarted — a fresh offer tears down and replaces the pc,
+    // same as the test above. Before this fix, the new pc never got the
+    // talk-back track re-added, so push-to-talk silently transmitted
+    // nothing after any Monitor-initiated reconnect.
+    await handleSignal(session, { sdp: { sdp: 'offer-2', type: 'offer' } });
+
+    expect(mockPeerConnectionInstances).toHaveLength(2);
+    expect(mockPeerConnectionInstances[1]!.addedTracks).toContain(fakeTrack);
   });
 });
 

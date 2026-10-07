@@ -168,6 +168,20 @@ export class ParentSession {
       if (stream) this.events.onRemoteStream?.(stream);
     };
 
+    // A fresh offer tears down and replaces `pc` outright (see
+    // handleSignal's comment) whenever the Monitor restarts — including
+    // mid-talk. The talk-back track itself survives that (only `pc` is
+    // discarded, never `talkStream`), but a brand-new RTCPeerConnection
+    // starts with no tracks on it; without re-adding it here, the next
+    // answer this side sends silently omits talk-back, and push-to-talk
+    // looks like it's working (UI still says "talking") while transmitting
+    // nothing.
+    if (this.talkStream) {
+      for (const track of this.talkStream.getAudioTracks()) {
+        pc.addTrack(track, this.talkStream);
+      }
+    }
+
     this.pc = pc;
     return pc;
   }

@@ -63,6 +63,22 @@ export function ParentScreen({ route, navigation }: Props) {
     refreshEvents();
   }, [refreshEvents]);
 
+  // Listen is a toggle a user can leave "on" and then navigate away —
+  // unlike push-to-talk (a press-and-hold action with nothing to clean up),
+  // an open Listen request left running after this screen unmounts would
+  // keep the Monitor's gate forced open with no UI left to turn it back off
+  // until the 60s safety-net timeout. react-navigation's native-stack
+  // unmounts a screen on pop by default, so a plain unmount cleanup covers
+  // "the user left" without needing a separate focus/blur listener.
+  const listeningRef = React.useRef(false);
+  listeningRef.current = state?.listening ?? false;
+  React.useEffect(() => {
+    return () => {
+      if (listeningRef.current) setListening(monitorId, false);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [monitorId]);
+
   const toggleTalk = async () => {
     if (talkingRef.current) {
       talkingRef.current = false;

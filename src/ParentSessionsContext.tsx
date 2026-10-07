@@ -78,7 +78,12 @@ interface Managed {
   wasConnected: boolean;
   connectStartedAt: number;
   lastDisconnectBeepAtMs: number | null;
+  /** Mirrors the Monitor-side Listen override's own safety-net timeout (ESP32 firmware's `LISTEN_OVERRIDE_TIMEOUT_MS`, `MonitorSession`'s own constant of the same name) — without this, the UI would keep showing "Stop listening" long after the Monitor itself has silently let the override expire. Cleared and reset on every `setListening(id, true)`, cleared outright on `false`. */
+  listenTimer: ReturnType<typeof setTimeout> | null;
 }
+
+/** Kept in sync with the Monitor-side safety net by convention, not shared code — same relationship INVITE_WINDOW_MS has with signal-server's TTL. */
+const LISTEN_OVERRIDE_TIMEOUT_MS = 60 * 1000;
 
 /**
  * ParentSessionsProvider owns one ParentSession per paired monitor for the
@@ -166,6 +171,7 @@ export function ParentSessionsProvider({ children }: { children: React.ReactNode
         wasConnected: false,
         connectStartedAt: Date.now(),
         lastDisconnectBeepAtMs: null,
+        listenTimer: null,
       };
 
       const session = new ParentSession(
@@ -247,6 +253,7 @@ export function ParentSessionsProvider({ children }: { children: React.ReactNode
     (monitorId: string): void => {
       const managed = managedRef.current.get(monitorId);
       if (!managed) return;
+      if (managed.listenTimer !== null) clearTimeout(managed.listenTimer);
       if (managed.state.listening) managed.session.setListenRequest(false);
       managed.session.stop();
       managedRef.current.delete(monitorId);
@@ -398,8 +405,22 @@ export function ParentSessionsProvider({ children }: { children: React.ReactNode
     (monitorId: string, listening: boolean): void => {
       const managed = managedRef.current.get(monitorId);
       if (!managed) return;
+      if (managed.listenTimer !== null) {
+        clearTimeout(managed.listenTimer);
+        managed.listenTimer = null;
+      }
       managed.session.setListenRequest(listening);
       managed.state = { ...managed.state, listening };
+      if (listening) {
+        // Mirror the Monitor's own safety-net timeout client-side — without
+        // this the button keeps reading "Stop listening" long after the
+        // Monitor has silently let its own override lapse.
+        managed.listenTimer = setTimeout(() => {
+          managed.listenTimer = null;
+          managed.state = { ...managed.state, listening: false };
+          rerender();
+        }, LISTEN_OVERRIDE_TIMEOUT_MS);
+      }
       rerender();
     },
     [rerender],
